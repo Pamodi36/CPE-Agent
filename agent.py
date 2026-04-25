@@ -18,9 +18,7 @@ from monitoring_manager import MonitoringManager
 #info messages and errors are shown
 logging.basicConfig(level=logging.INFO)
 
-
 class Agent:
-
     def __init__(self):
         #Creates object for each python module and stores it inside the agent
         self.config_reader = ConfigReader()
@@ -28,6 +26,7 @@ class Agent:
         self.state_writer = StateWriter()
         self.steering_manager = SteeringManager()
         self.monitoring_manager = MonitoringManager()
+        self.generated_tunnel_keys = {}
 
     # =====================================================================================
     # Basic helpers
@@ -157,7 +156,7 @@ class Agent:
 
     def _extract_candidate_states(self, policy, wan_state_map, tunnel_state_map):
         #Return candidate type and candidate state objects according to policy.
-        steering_mode = policy.get("steering-mode", "failover")          #Reads steering mode from policy. Default is "failover"
+        steering_mode = policy.get("steering-mode")          #Reads steering mode from policy. Default is "failover"
         candidates = []
 
         if steering_mode == "failover": 
@@ -280,7 +279,6 @@ class Agent:
                 "metric-source": metric["source"] if metric["source"] is not None else None,
                 "state-reason": reason,
             }
-
             tunnel_states.append(state)
 
         return tunnel_states
@@ -291,22 +289,23 @@ class Agent:
 
     def _build_interface_apply_actions(self, sdwan_root, changed):
        #Build execution actions for WAN, LAN, tunnels and firewall,when config changes.
-        if not changed:                              #If config did not change, do nothing and return empty list.
+        if not changed:                                                                          #If config did not change, do nothing and return empty list.
             return []
 
-        interface_actions = []                       #Creates empty action list.
+        interface_actions = []                                                                   #Creates empty action list.
 
-        wan_links = sdwan_root.get("interfaces", {}).get("underlay", {}).get("wan-link", []) #Reads WAN-link list from config.
-        for wan_link in wan_links:                  #Loops through WAN links.
-            actions.append({
-                "action": "apply-wan-link-config",  #Adds one action per WAN link telling the executor to apply its config.
+        wan_links = sdwan_root.get("interfaces", {}).get("underlay", {}).get("wan-link", [])     #Reads WAN-link list from config.
+        for wan_link in wan_links:                                                               #Loops through WAN links.
+            interface_actions.append({
+                "action": "apply-wan-link-config",                                               #Adds one action per WAN link telling the executor to apply its config.
                 "target-type": "wan-link",
                 "name": wan_link.get("name"),
                 "parameters": copy.deepcopy(wan_link),
             })
 
-        lan_links = sdwan_root.get("interfaces", {}).get("lan", {}).get("lan-link", [])      #Reads LAN links from config.
+        lan_links = sdwan_root.get("interfaces", {}).get("lan", {}).get("lan-link", [])          #Reads LAN links from config.
         for lan_link in lan_links:
+            lan_params = copy.deepcopy(lan_link)
             dhcp_cfg = lan_params.get("dhcp-server", {})
             effective_dhcp_enabled = bool(lan_params.get("admin-enabled")) and bool(dhcp_cfg.get("enabled"))
 
@@ -315,74 +314,95 @@ class Agent:
         
             lan_params["dhcp-server"]["enabled"] = effective_dhcp_enabled
 
-            actions.append({                                       #Adds one action per LAN link telling the executor to apply its config.
+            interface_actions.append({                                                           #Adds one action per LAN link telling the executor to apply its config.
                 "action": "apply-lan-link-config",
                 "target-type": "lan-link",
                 "name": lan_link.get("name"),
-                "parameters": copy.deepcopy(lan_link),
+                "parameters": lan_params,
             })
 
-        tunnels = sdwan_root.get("overlay", {}).get("tunnel", []) #Reads tunnel list.
+        tunnels = sdwan_root.get("overlay", {}).get("tunnel", [])                               #Reads tunnel list.
         for tunnel in tunnels:
             tunnel_params = copy.deepcopy(tunnel)
             tunnel_name = tunnel.get("name")
 
-            actions.append({                                     #Adds one action per tunne, telling the executor to apply its config.
+            if tunnel_name not in self.generated_tunnel_keys:
+                private_key = self._generate_wireguard_private_key()
+                public_key = self._derive_wireguard_public_key(private_key)
+
+                if private_key and public_key:
+                    self.generated_tunnel_keys[tunnel_name] = {
+                        "local-private-key": private_key,
+                        "local-public-key": public_key,
+                    }
+
+                    self._store_tunnel_keys_in_datastore(
+                        tunnel_name,
+                        private_key,
+                        public_key
+                    )
+
+            tunnel_params.update(self.generated_tunnel_keys.get(tunnel_name, {}))
+
+            interface_actions.append({                                                        #Adds one action per tunne, telling the executor to apply its config.
                 "action": "apply-tunnel-config",
                 "target-type": "tunnel",
                 "name": tunnel_name,
                 "parameters": tunnel_params,
             })
+        return interface_actions                                                           #Returns all config-apply actions.
 
-        firewall_rules = sdwan_root.get("firewall", {}).get("rule", []) #Reads firewall rules from config
+    def _build_firewall_apply_actions(self, sdwan_root, changed):
+        if not changed:                                                                     #If config did not change, do nothing and return empty list.
+            return []
+
+        firewall_actions = []                                                               #Creates empty action list.
+        firewall_rules = sdwan_root.get("firewall", {}).get("rule", [])                     #Reads firewall rules from config
         for rule in firewall_rules:
-            actions.append({                                            #Adds one action per firewall rule.
+            firewall_actions.append({                                                       #Adds one action per firewall rule.
                 "action": "apply-firewall-rule",               
                 "target-type": "firewall-rule",
                 "name": rule.get("id"),
                 "parameters": copy.deepcopy(rule),
             })
-
-        return interface_actions                                       #Returns all config-apply actions.
-
+        return firewall_actions
+            
     # =====================================================================================
     # Traffic classification actions
     # =====================================================================================
 
     def _build_classifier_actions(self, sdwan_root, changed):
-        if not changed:                                                   #If config did not change, no need to rebuild classifier actions.
+        if not changed:                                                                    #If config did not change, no need to rebuild classifier actions.
             return [] 
 
-        classifier_actions = []                                                      #Creates empty action list.
-        traffic_classes = sdwan_root.get("traffic", {}).get("class", [])  #Reads configured traffic classes.
+        classifier_actions = []                                                            #Creates empty action list.
+        traffic_classes = sdwan_root.get("traffic", {}).get("class", [])                   #Reads configured traffic classes.
 
-        for idx, traffic_class in enumerate(traffic_classes, start=1):    #Loops through traffic classes and also gives each one an index starting from 1.
+        for idx, traffic_class in enumerate(traffic_classes, start=1):                     #Loops through traffic classes and also gives each one an index starting from 1.
             class_name = traffic_class.get("name")
-            five_tuple = traffic_class.get("five-tuple", {})              #Reads class name and its five-tuple match fields.
+            five_tuple = traffic_class.get("five-tuple", {})                               #Reads class name and its five-tuple match fields.
 
             if not class_name:         
-                continue                                                  #Skip if class has no name
+                continue                                                                   #Skip if class has no name
 
-            fwmark = self._allocate_fwmark(class_name, idx)               #Alocates an fwmark for this traffic class.
+            fwmark = self._allocate_fwmark(class_name, idx)                                #Alocates an fwmark for this traffic class.
 
-            action = {
-                "action": "install-traffic-class",                        #tells executor to install the classifier
+            classifier_actions.append({
+                "action": "install-traffic-class",                                         #tells executor to install the classifier
                 "target-type": "traffic-class",
                 "traffic-class": class_name,
-                "fwmark": fwmark,                                         #the mark to apply
+                "fwmark": fwmark,                                                          #the mark to apply
                 "marking-mode": "mark-on-match-only",
                 "default-unmatched-fwmark": 0,
-                "match": {                                                #contains matching criteria
+                "match": {                                                                 #contains matching criteria
                     "src-prefix": five_tuple.get("src-prefix"),
                     "dst-prefix": five_tuple.get("dst-prefix"),
                     "l4-protocol": five_tuple.get("l4-protocol"),
                     "src-port": five_tuple.get("src-port"),
                     "dst-port": five_tuple.get("dst-port"),
                 },
-                "parameters": copy.deepcopy(traffic_class),               #full copied config
-            }
-
-            actions.append(action)                                        #Adds action to the list.
+                "parameters": copy.deepcopy(traffic_class),                                #full copied config
+            })
 
         return classifier_actions
 
@@ -526,7 +546,7 @@ class Agent:
 
                 decisions.append(decision)
 
-        return decisions                                      #returns all steering decisions.
+        return decisions                                                                                #returns all steering decisions.
 
     # =====================================================================================
     # Execution
@@ -579,35 +599,33 @@ class Agent:
                 "peer-port": tunnel.get("peer-port"),
             })
 
-        return self.monitoring_manager.apply_configuration(monitoring_config)
+        return self.monitoring_manager.apply_configuration(instructions)
 
     # =====================================================================================
     # Main cycle
     # =====================================================================================
 
-    def run_once(self):
-        """
-        One full execution cycle.
-        """
+    def run_once(self):                                                                                     #One full execution cycle.
         current_config, changed = self.config_reader.get_config_with_change_flag()
         sdwan_root = current_config
 
         wan_links = sdwan_root.get("interfaces", {}).get("underlay", {}).get("wan-link", [])
         tunnels = sdwan_root.get("overlay", {}).get("tunnel", [])
 
-        wan_link_states = self._build_wan_link_states(wan_links)                                            #Builds WAN operational states.
-        tunnel_states = self._build_tunnel_states(tunnels)                                                  #Builds tunnel operational states.
+        wan_link_states = self._build_wan_link_states(wan_links)                                                #Builds WAN operational states.
+        tunnel_states = self._build_tunnel_states(tunnels)                                                      #Builds tunnel operational states.
 
-        config_apply_actions = self._build_interface_apply_interface_actions(sdwan_root, changed)           #Builds config-apply actions if config changed.
-        classifier_actions = self._build_classifier_classifier_actions(sdwan_root, changed)                 #Builds traffic classification actions if config changed.
-        steering_decisions = self._make_steering_decisions(current_config, wan_link_states, tunnel_states)  #Makes steering decisions using current states and policies
+        interface_config_apply_actions = self._build_interface_apply_actions(sdwan_root, changed)      #Builds config-apply actions if interface config changed
+        firewall_config_apply_actions = self._build_firewall_apply_actions(sdwan_root,changed)                    #Builds config-apply actions if firewall config changed
+        classifier_actions = self._build_classifier_actions(sdwan_root, changed)                      #Builds traffic classification actions if config changed.
+        steering_decisions = self._make_steering_decisions(current_config, wan_link_states, tunnel_states)       #Makes steering decisions using current states and policies
 
-        all_actions = config_apply_actions + classifier_actions + steering_decisions                        #Combines all actions and decisions into one list.
-        execution_results = self._execute_decisions(all_actions)                                            #Sends all of them to the executor module
+        all_actions = interface_config_apply_actions + firewall_config_apply_actions + classifier_actions + steering_decisions             #Combines all actions and decisions into one list.
+        execution_results = self._execute_decisions(all_actions)                                                 #Sends all of them to the executor module
 
-        monitoring_results = self._apply_monitoring_updates_if_needed(current_config, changed)               #Updates monitoring if config changed
+        monitoring_results = self._apply_monitoring_updates_if_needed(current_config, changed)                   #Updates monitoring if config changed
 
-        steering_state = []                                                                                 #Build steering state summary         
+        steering_state = []                                                                                      #Build steering state summary         
         for decision in steering_decisions:
             steering_state.append({
                 "class": decision.get("traffic-class"),
@@ -627,7 +645,8 @@ class Agent:
             "config_changed": changed,
             "wan_link_states": wan_link_states,
             "tunnel_states": tunnel_states,
-            "config_apply_actions": config_apply_actions,
+            "interface_config_apply_actions": interface_config_apply_actions,
+            "firewall_config_apply_actions": firewall_config_apply_actions,
             "classifier_actions": classifier_actions,
             "decisions": steering_decisions,
             "execution_results": execution_results,
@@ -640,10 +659,7 @@ class Agent:
                     
         return result
 
-    def run_forever(self, interval_sec=5):
-        """
-        Repeat the full execution cycle continuously.
-        """
+    def run_forever(self, interval_sec=5):                                                                # Repeat the full execution cycle continuously.
         while True:
             try:
                 self.run_once()
