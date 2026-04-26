@@ -53,6 +53,7 @@ class Agent:
                 check=True,             #raises an exception if the command fails
             )
             return result.stdout.decode("utf-8").strip() #Converts the output into text and returns the private key.
+       
         except Exception as e:          #If anything fails, execution comes here
             logging.exception("Failed to generate WireGuard private key: %s", e)
             return None
@@ -69,50 +70,48 @@ class Agent:
                 stderr=subprocess.PIPE,
                 check=True,
             )
-            return result.stdout.decode("utf-8").strip()    #Converts the output into text and returns the public key.
+            return result.stdout.decode("utf-8").strip()                                     #Converts the output into text and returns the public key.
         except Exception as e:
             logging.exception("Failed to derive WireGuard public key: %s", e)
             return None
 
-    def _store_tunnel_keys_in_datastore(self, tunnel_name, private_key, public_key):
-        #Store generated tunnel keys in YANG datastore through RESTCONF
-        if not tunnel_name or not private_key or not public_key: #If any required value is missing, return False
+    def _store_tunnel_keys_in_datastore(self, tunnel_name, public_key):         #Store generated tunnel keys in YANG datastore through RESTCONF
+        if not tunnel_name or not public_key:                                                #If any required value is missing, return False
             return False
 
-        url = f"http://127.0.0.1/restconf/data/sdwan-cpe:sdwan/overlay/tunnel={tunnel_name}"
+        url = f"http://127.0.0.1:8383/restconf/data/sdwan-cpe:sdwan/overlay/tunnel={tunnel_name}"
 
         headers = {
-            "Content-Type": "application/yang-data+json", #JSON in YANG format is being sent and expected
+            "Content-Type": "application/yang-data+json",                                    #JSON in YANG format is being sent and expected
             "Accept": "application/yang-data+json"
         }
 
-        payload = {                     #JSON body to patch into the datastore.
+        payload = {                                                                          #JSON body to patch into the datastore.
             "sdwan-cpe:tunnel": {
                 "name": tunnel_name,
-                "local-private-key": private_key,
                 "local-public-key": public_key
             }
         }
 
         try:
-            response = requests.patch(  #Sends an HTTP PATCH request to update the datastore
-                url,                    #target RESTCONF endpoint
-                headers=headers,        #content type and accept type
-                data=json.dumps(payload),#converts Python dictionary to JSON string
-                auth=("admin", "admin") #basic authentication
+            response = requests.patch(                                                      #Sends an HTTP PATCH request to update the datastore
+                url,                                                                        #target RESTCONF endpoint
+                headers=headers,                                                            #content type and accept type
+                data=json.dumps(payload),                                                   #converts Python dictionary to JSON string
+                auth=("admin", "admin")                                                     #basic authentication
             )
-            response.raise_for_status() #Raises an exception if the server returned an HTTP error like 400 or 500
+            response.raise_for_status()                                                     #Raises an exception if the server returned an HTTP error like 400 or 500
             return True
         except Exception as e:
             logging.exception("Failed to store tunnel keys in datastore for %s: %s", tunnel_name, e)
             return False
 
     def _candidate_satisfies_slo(self, candidate_state, policy):
-        if not candidate_state:        #If there is no state object, candidate is invalid.
+        if not candidate_state:                                                            #If there is no state object, candidate is invalid.
             return False
 
-        oper_status = candidate_state.get("oper-status")  #Reads the operational status.
-        if oper_status not in ["up", "degraded"]:         #Only candidates with up or degraded are accepted. Anything else is rejected
+        oper_status = candidate_state.get("oper-status")                                   #Reads the operational status.
+        if oper_status not in ["up", "degraded"]:                                          #Only candidates with up or degraded are accepted. Anything else is rejected
             return False
 
         max_latency = policy.get("max-latency-ms")        #Reads max allowed latency from policy.
@@ -338,7 +337,6 @@ class Agent:
 
                     self._store_tunnel_keys_in_datastore(
                         tunnel_name,
-                        private_key,
                         public_key
                     )
 
@@ -435,7 +433,7 @@ class Agent:
                 if self._candidate_satisfies_slo(state, policy):
                     eligible.append((link_type, name, state))               #If candidate passes SLO checks, put it in eligible
                 else:
-                    rejected.append({                                       #If candidate fails, add summary info into rejected
+                    rejected.append({                                                                    #If candidate fails, add summary info into rejected
                         "name": name,
                         "link-type": link_type,
                         "oper-status": state.get("oper-status"),
@@ -445,11 +443,11 @@ class Agent:
                         "available-bandwidth-kbps": state.get("available-bandwidth-kbps"),
                     })
 
-            now_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())    #Creates current UTC timestamp in ISO-like format.
+            now_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())                                   #Creates current UTC timestamp in ISO-like format.
 
-            if steering_mode == "failover":                                #Enter failover logic.
-                if eligible:                                               #If at least one candidate satisfies the SLO:
-                    selected_link_type, selected_name, selected_state = eligible[0] #Choose the first eligible candidate.
+            if steering_mode == "failover":                                                               #Enter failover logic.
+                if eligible:                                                                              #If at least one candidate satisfies the SLO:
+                    selected_link_type, selected_name, selected_state = eligible[0]                       #Choose the first eligible candidate.
                     decision = {
                         "action": "set-active-path",
                         "traffic-class": traffic_class,
@@ -476,7 +474,7 @@ class Agent:
                             "available-bandwidth-kbps": selected_state.get("available-bandwidth-kbps"),
                         }
                     }
-                else:                                                      #If no candidate is eligible, creates a no-path decision.
+                else:                                                                                      #If no candidate is eligible, creates a no-path decision.
                     decision = {
                         "action": "set-active-path",
                         "traffic-class": traffic_class,
@@ -612,20 +610,20 @@ class Agent:
         wan_links = sdwan_root.get("interfaces", {}).get("underlay", {}).get("wan-link", [])
         tunnels = sdwan_root.get("overlay", {}).get("tunnel", [])
 
-        wan_link_states = self._build_wan_link_states(wan_links)                                                #Builds WAN operational states.
-        tunnel_states = self._build_tunnel_states(tunnels)                                                      #Builds tunnel operational states.
+        wan_link_states = self._build_wan_link_states(wan_links)                                                                  #Builds WAN operational states.
+        tunnel_states = self._build_tunnel_states(tunnels)                                                                        #Builds tunnel operational states.
 
-        interface_config_apply_actions = self._build_interface_apply_actions(sdwan_root, changed)      #Builds config-apply actions if interface config changed
-        firewall_config_apply_actions = self._build_firewall_apply_actions(sdwan_root,changed)                    #Builds config-apply actions if firewall config changed
-        classifier_actions = self._build_classifier_actions(sdwan_root, changed)                      #Builds traffic classification actions if config changed.
-        steering_decisions = self._make_steering_decisions(current_config, wan_link_states, tunnel_states)       #Makes steering decisions using current states and policies
+        interface_config_apply_actions = self._build_interface_apply_actions(sdwan_root, changed)                                 #Builds config-apply actions if interface config changed
+        firewall_config_apply_actions = self._build_firewall_apply_actions(sdwan_root,changed)                                    #Builds config-apply actions if firewall config changed
+        classifier_actions = self._build_classifier_actions(sdwan_root, changed)                                                  #Builds traffic classification actions if config changed.
+        steering_decisions = self._make_steering_decisions(current_config, wan_link_states, tunnel_states)                        #Makes steering decisions using current states and policies
 
-        all_actions = interface_config_apply_actions + firewall_config_apply_actions + classifier_actions + steering_decisions             #Combines all actions and decisions into one list.
-        execution_results = self._execute_decisions(all_actions)                                                 #Sends all of them to the executor module
+        all_actions = interface_config_apply_actions + firewall_config_apply_actions + classifier_actions + steering_decisions    #Combines all actions and decisions into one list.
+        execution_results = self._execute_decisions(all_actions)                                                                  #Sends all of them to the executor module
 
-        monitoring_results = self._apply_monitoring_updates_if_needed(current_config, changed)                   #Updates monitoring if config changed
+        monitoring_results = self._apply_monitoring_updates_if_needed(current_config, changed)                                    #Updates monitoring if config changed
 
-        steering_state = []                                                                                      #Build steering state summary         
+        steering_state = []                                                                                                       #Build steering state summary         
         for decision in steering_decisions:
             steering_state.append({
                 "class": decision.get("traffic-class"),
@@ -669,6 +667,72 @@ class Agent:
             time.sleep(interval_sec)
 
 
+#if __name__ == "__main__":
+    #agent = Agent()
+   # agent.run_once()
+
 if __name__ == "__main__":
     agent = Agent()
+
+    # Temporary fake metric reader for testing agent.py before real metric_reader.py is ready
+    class FakeMetricReader:
+        def get_wan_link_metric(self, name):
+            return {
+                "latency_ms": 10,
+                "jitter_ms": 1,
+                "loss_percent": 0,
+                "available_bandwidth_kbps": 100000,
+                "timestamp": "test",
+                "stale": False,
+                "source": "fake",
+                "reason": "fake metric"
+            }
+
+        def get_tunnel_metric(self, name):
+            return {
+                "latency_ms": 20,
+                "jitter_ms": 2,
+                "loss_percent": 0,
+                "available_bandwidth_kbps": 50000,
+                "timestamp": "test",
+                "stale": False,
+                "source": "fake",
+                "reason": "fake metric"
+            }
+
+    # Temporary fake steering manager for checking all actions received from agent.py
+    class FakeSteeringManager:
+        def execute_decision(self, decision):
+            print("\n===== DRY-RUN steering_manager received =====")
+            print(json.dumps(decision, indent=2))
+            return {
+                "status": "dry-run",
+                "received-action": decision.get("action"),
+                "target-type": decision.get("target-type"),
+                "name": decision.get("name"),
+            }
+
+    # Temporary fake state writer for testing before real state_writer.py is ready
+    class FakeStateWriter:
+        def write_state(self, wan_link_states, tunnel_states, steering_state):
+            print("\n===== DRY-RUN state_writer received =====")
+            print(json.dumps({
+                "wan_link_states": wan_link_states,
+                "tunnel_states": tunnel_states,
+                "steering_state": steering_state
+            }, indent=2))
+            return "/tmp/fake_state.json"
+
+    # Temporary fake monitoring manager for testing before real monitoring_manager.py is ready
+    class FakeMonitoringManager:
+        def apply_configuration(self, instructions):
+            print("\n===== DRY-RUN monitoring_manager received =====")
+            print(json.dumps(instructions, indent=2))
+            return {"status": "dry-run"}
+
+    agent.metric_reader = FakeMetricReader()
+    agent.steering_manager = FakeSteeringManager()
+    agent.state_writer = FakeStateWriter()
+    agent.monitoring_manager = FakeMonitoringManager()
+
     agent.run_once()
