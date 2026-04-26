@@ -10,22 +10,21 @@ import requests
 
 #import other python modules
 from config_reader import ConfigReader
-#from metric_reader import MetricReader
-#from state_writer import StateWriter
-#from steering_manager import SteeringManager
-#from monitoring_manager import MonitoringManager
+#from metric_reader import MetricReader                  #REMOVE COMMENT 
+#from state_writer import StateWriter                    #REMOVE COMMENT 
+#from steering_manager import SteeringManager            #REMOVE COMMENT 
+#from monitoring_manager import MonitoringManager        #REMOVE COMMENT 
 
 #info messages and errors are shown
 logging.basicConfig(level=logging.INFO)
 
 class Agent:
-    def __init__(self):
-        #Creates object for each python module and stores it inside the agent
+    def __init__(self):                                                            #Creates object for each python module and stores it inside the agent       
         self.config_reader = ConfigReader()
-        self.metric_reader = MetricReader()
-        self.state_writer = StateWriter()
-        self.steering_manager = SteeringManager()
-        self.monitoring_manager = MonitoringManager()
+        #self.metric_reader = MetricReader()              #REMOVE COMMENT                                
+        #self.state_writer = StateWriter()                #REMOVE COMMENT 
+        #self.steering_manager = SteeringManager()        #REMOVE COMMENT 
+        #self.monitoring_manager = MonitoringManager()    #REMOVE COMMENT 
         self.generated_tunnel_keys = {}
 
     # =====================================================================================
