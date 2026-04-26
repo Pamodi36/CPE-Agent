@@ -126,6 +126,7 @@ class Agent:
                 return False
 
         max_loss = policy.get("max-loss-percent")        #Reads max allowed packet loss from policy.
+        max_loss = float(max_loss)
         if max_loss is not None:
             loss = candidate_state.get("loss-percent")   #Reads measured packet loss from state
             if loss is None or loss > max_loss:          #Reject if packet loss is missing or exceeds the threshold
