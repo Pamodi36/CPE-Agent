@@ -677,28 +677,77 @@ if __name__ == "__main__":
     # Temporary fake metric reader for testing agent.py before real metric_reader.py is ready
     class FakeMetricReader:
         def get_wan_link_metric(self, name):
+            if name == "UPL1":
+                return {
+                    "latency_ms": 10,
+                    "jitter_ms": 1,
+                    "loss_percent": 0,
+                    "available_bandwidth_kbps": 100000,
+                    "timestamp": "test",
+                    "stale": False,
+                    "source": "fake",
+                    "reason": "fake metric for UPL1"
+                }
+        
+            if name == "UPL2":
+                return {
+                    "latency_ms": 40,
+                    "jitter_ms": 5,
+                    "loss_percent": 1,
+                    "available_bandwidth_kbps": 50000,
+                    "timestamp": "test",
+                    "stale": False,
+                    "source": "fake",
+                    "reason": "fake metric for UPL2"
+                }
+        
             return {
-                "latency_ms": 10,
-                "jitter_ms": 1,
-                "loss_percent": 0,
-                "available_bandwidth_kbps": 100000,
+                "latency_ms": None,
+                "jitter_ms": None,
+                "loss_percent": None,
+                "available_bandwidth_kbps": None,
                 "timestamp": "test",
-                "stale": False,
+                "stale": True,
                 "source": "fake",
-                "reason": "fake metric"
+                "reason": "unknown WAN link"
             }
 
-        def get_tunnel_metric(self, name):
-            return {
-                "latency_ms": 20,
-                "jitter_ms": 2,
-                "loss_percent": 0,
-                "available_bandwidth_kbps": 50000,
-                "timestamp": "test",
-                "stale": False,
-                "source": "fake",
-                "reason": "fake metric"
-            }
+
+def get_tunnel_metric(self, name):
+    if name == "tun1":
+        return {
+            "latency_ms": 75,
+            "jitter_ms": 2,
+            "loss_percent": 0,
+            "available_bandwidth_kbps": 50000,
+            "timestamp": "test",
+            "stale": False,
+            "source": "fake",
+            "reason": "fake metric for tun1"
+        }
+
+    if name == "tun2":
+        return {
+            "latency_ms": 30,
+            "jitter_ms": 3,
+            "loss_percent": 0,
+            "available_bandwidth_kbps": 70000,
+            "timestamp": "test",
+            "stale": False,
+            "source": "fake",
+            "reason": "fake metric for tun2"
+        }
+
+    return {
+        "latency_ms": None,
+        "jitter_ms": None,
+        "loss_percent": None,
+        "available_bandwidth_kbps": None,
+        "timestamp": "test",
+        "stale": True,
+        "source": "fake",
+        "reason": "unknown tunnel"
+    }
 
     # Temporary fake steering manager for checking all actions received from agent.py
     class FakeSteeringManager:
