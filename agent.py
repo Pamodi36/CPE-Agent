@@ -10,10 +10,10 @@ import requests
 
 #import other python modules
 from config_reader import ConfigReader
-from metric_reader import MetricReader
-from state_writer import StateWriter
-from steering_manager import SteeringManager
-from monitoring_manager import MonitoringManager
+#from metric_reader import MetricReader
+#from state_writer import StateWriter
+#from steering_manager import SteeringManager
+#from monitoring_manager import MonitoringManager
 
 #info messages and errors are shown
 logging.basicConfig(level=logging.INFO)
