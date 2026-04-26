@@ -460,7 +460,7 @@ class Agent:
                         "selected-path": selected_name,
                         "selected-path-type": selected_link_type,
                         "decision-status": "selected",
-                        "reason": "first preferred candidate satisfying SLO",
+                        "reason": reason,
                         "last-change": now_ts,
                         "slo-policy": {
                             "max-latency-ms": policy.get("max-latency-ms"),
