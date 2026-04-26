@@ -446,8 +446,14 @@ class Agent:
             now_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())                                   #Creates current UTC timestamp in ISO-like format.
 
             if steering_mode == "failover":                                                               #Enter failover logic.
-                if eligible:                                                                              #If at least one candidate satisfies the SLO:
+                if eligible:                                                                              #If at least one candidate satisfies the SLO
                     selected_link_type, selected_name, selected_state = eligible[0]                       #Choose the first eligible candidate.
+
+                    if candidates and selected_name == candidates[0][1]:
+                        reason = "primary path satisfies SLO"
+                    else:
+                        reason = "primary path failed SLO; failed over to next eligible path"
+                        
                     decision = {
                         "action": "set-active-path",
                         "traffic-class": traffic_class,
