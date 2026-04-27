@@ -272,7 +272,7 @@ class SteeringManager:
     # ============================================================
     # PATCH request sender to forwarder
     # ============================================================
-    def _patch(self, url: str, payload, action):                                           #common helper that sends RESTCONF PATCH requests to forwarder
+    """def _patch(self, url: str, payload, action):                                           #common helper that sends RESTCONF PATCH requests to forwarder
         logging.info("PATCH %s", url)                                                      #Prints the target URL and the payload for debugging
         logging.info("Payload: %s", json.dumps(payload, indent=2))
 
@@ -291,6 +291,19 @@ class SteeringManager:
         return {
             "status": "error",
             "http-status": response.status_code,
+        }"""
+    """==========================================================================================================
+    Test code without forwarder module. need to remove this once forwarder is present
+    """===========================================================================================================
+    def _patch(self, url: str, payload, action):                                         
+        logging.info("DRY-RUN PATCH %s", url)                                             
+        logging.info("Payload: %s", json.dumps(payload, indent=2))
+
+        return {
+            "status": "dry-run",
+            "url": url,
+            "payload": payload,
+            "received-action": action.get("action"),
         }
     # ============================================================
     # Error message handler
