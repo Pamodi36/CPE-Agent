@@ -292,4 +292,13 @@ class SteeringManager:
             "status": "error",
             "http-status": response.status_code,
         }
-
+    # ============================================================
+    # Error message handler
+    # ============================================================
+    def _result_error(self, action, reason: str):
+        return {
+            "status": "error",
+            "action": action.get("action"),
+            "target": action.get("name") or action.get("traffic-class"),
+            "reason": reason,
+        }
