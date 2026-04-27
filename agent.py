@@ -12,7 +12,7 @@ import requests
 from config_reader import ConfigReader
 #from metric_reader import MetricReader                  #REMOVE COMMENT 
 #from state_writer import StateWriter                    #REMOVE COMMENT 
-#from steering_manager import SteeringManager            #REMOVE COMMENT 
+from steering_manager import SteeringManager            
 #from monitoring_manager import MonitoringManager        #REMOVE COMMENT 
 
 #info messages and errors are shown
@@ -23,7 +23,7 @@ class Agent:
         self.config_reader = ConfigReader()
         #self.metric_reader = MetricReader()              #REMOVE COMMENT                                
         #self.state_writer = StateWriter()                #REMOVE COMMENT 
-        #self.steering_manager = SteeringManager()        #REMOVE COMMENT 
+        self.steering_manager = SteeringManager()        
         #self.monitoring_manager = MonitoringManager()    #REMOVE COMMENT 
         self.generated_tunnel_keys = {}
 
@@ -755,7 +755,7 @@ if __name__ == "__main__":
             }
 
     # Temporary fake steering manager for checking all actions received from agent.py
-    class FakeSteeringManager:
+    """class FakeSteeringManager:
         def execute_decision(self, decision):
             print("\n===== DRY-RUN steering_manager received =====")
             print(json.dumps(decision, indent=2))
@@ -764,7 +764,7 @@ if __name__ == "__main__":
                 "received-action": decision.get("action"),
                 "target-type": decision.get("target-type"),
                 "name": decision.get("name"),
-            }
+            }"""
 
     # Temporary fake state writer for testing before real state_writer.py is ready
     class FakeStateWriter:
@@ -785,7 +785,7 @@ if __name__ == "__main__":
             return {"status": "dry-run"}
 
     agent.metric_reader = FakeMetricReader()
-    agent.steering_manager = FakeSteeringManager()
+    #agent.steering_manager = FakeSteeringManager()
     agent.state_writer = FakeStateWriter()
     agent.monitoring_manager = FakeMonitoringManager()
 
