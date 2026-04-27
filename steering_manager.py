@@ -4,29 +4,26 @@
 import copy
 import json
 import logging
-import requests    #HTTP library used to send RESTCONF requests to the forwarder container.
+import requests                                                                               #HTTP library used to send RESTCONF requests to the forwarder container.
 
 logging.basicConfig(level=logging.INFO)
 
 class SteeringManager:
-
     def __init__(self):
         self.base_url = "http://forwarder:9090"
-        self.timeout = 5                                  #if the forwarder does not respond within 5 seconds, the request will fail.
+        self.timeout = 5                                                                      #if the forwarder does not respond within 5 seconds, the request will fail.
         self.headers = {
-            "Content-Type": "application/yang-data+json", #tells forwarder that the requests are sending in YANG JSON format. 
-            "Accept": "application/yang-data+json",       #tells the forwarder to reply in YANG JSON format.
+            "Content-Type": "application/yang-data+json",                                     #tells forwarder that the requests are sending in YANG JSON format. 
+            "Accept": "application/yang-data+json",                                           #tells the forwarder to reply in YANG JSON format.
         }
         
     # ============================================================
-    # Public entry point
+    # Interaction point with agent.py
     # ============================================================
+    def execute_decision(self, action):                                                       #main method that agent.py calls.
+        action_type = action.get("action")                                                    #reads the "action" field from the incoming action dictionary from "agent.py"
 
-    def execute_decision(self, action):                  #main method that agent.py calls.
-
-        action_type = action.get("action")               #reads the "action" field from the incoming action dictionary from "agent.py"
-
-        try:                                             #check the action type and call the correct internal handler.
+        try:                                                                                  #check the action type and call the correct internal handler.
             if action_type == "apply-wan-link-config":   
                 return self._apply_wan_link_config(action)
 
@@ -48,12 +45,12 @@ class SteeringManager:
             if action_type == "set-load-balance-policy":
                 return self._set_load_balance_policy(action)
 
-            return self._result_error(                  # If none of the known action types match, return an error dictionary.
+            return self._result_error(                                                       #If none of the known action types match, return an error dictionary.
                 action=action,
                 reason=f"Unsupported action: {action_type}",
             )
 
-        except Exception as e:                          # If any unexpected Python error happens in the try block, execution jumps here.
+        except Exception as e:                                                               #If any unexpected Python error happens in the try block, execution jumps here.
             logging.exception("Action execution failed for %s: %s", action_type, e)
             return self._result_error(
                 action=action,
@@ -65,17 +62,17 @@ class SteeringManager:
     # ============================================================
 
     def _apply_wan_link_config(self, action):
-        name = action.get("name")                                                    # reads the WAN link name from the action dictionary.
-        params = copy.deepcopy(action.get("parameters", {}))                         # reads the "parameters" dictionary from the action and makes a deep copy of it.
+        name = action.get("name")                                                             # reads the WAN link name from the action dictionary.
+        params = copy.deepcopy(action.get("parameters", {}))                                  # reads the "parameters" dictionary from the action and makes a deep copy of it.
 
         if not name:
-            return self._result_error(action, "WAN link name is missing")            # If name is empty or missing, return an error immediately.
+            return self._result_error(action, "WAN link name is missing")                     # If name is empty or missing, return an error immediately.
 
-        url = f"{self.base_url}/restconf/data/forwarder:wan-links/wan-link={name}"   # Builds the RESTCONF URL for this WAN link.
+        url = f"{self.base_url}/restconf/data/forwarder:wan-links/wan-link={name}"            # Builds the RESTCONF URL for this WAN link.
 
         address_mode = params.get("address-mode")
         
-        payload = {                                                                  # Builds the JSON payload to send.
+        payload = {                                                                           # Builds the JSON payload to send.
             "action": "configure-wan-link",
             "name": name,
             "target-type": "wan-link",
@@ -98,17 +95,17 @@ class SteeringManager:
         return self._patch(url, payload, action)
         
 
-    def _apply_lan_link_config(self, action):                                        # Handles LAN link configuration.
+    def _apply_lan_link_config(self, action):                                                    # Handles LAN link configuration.
         name = action.get("name")
         params = copy.deepcopy(action.get("parameters", {}))
         dhcp = copy.deepcopy(params.get("dhcp-server", {}))
 
         if not name:
-            return self._result_error(action, "LAN link name is missing")           # checks that LAN name exists.
+            return self._result_error(action, "LAN link name is missing")                        # checks that LAN name exists.
 
-        url = f"{self.base_url}/restconf/data/forwarder:lan-links/lan-link={name}"  # Builds the LAN RESTCONF URL.
+        url = f"{self.base_url}/restconf/data/forwarder:lan-links/lan-link={name}"               # Builds the LAN RESTCONF URL.
         
-        payload = {                                                                 # Builds the JSON payload to send.
+        payload = {                                                                              # Builds the JSON payload to send.
             "action": "configure-lan-link",
             "name": name,
             "target-type": "lan-link",
@@ -128,14 +125,14 @@ class SteeringManager:
 
         return self._patch(url, payload, action)
 
-    def _apply_tunnel_config(self, action):                                        # handles LAN link configuration
+    def _apply_tunnel_config(self, action):                                                        # handles LAN link configuration
         name = action.get("name")
         params = copy.deepcopy(action.get("parameters", {}))
 
         if not name:
-            return self._result_error(action, "Tunnel name is missing")            # checks that LAN name exists.
+            return self._result_error(action, "Tunnel name is missing")                           # checks that LAN name exists.
 
-        url = f"{self.base_url}/restconf/data/forwarder:tunnels/tunnel={name}"     # Builds the Tunnel RESTCONF URL.
+        url = f"{self.base_url}/restconf/data/forwarder:tunnels/tunnel={name}"                    # Builds the Tunnel RESTCONF URL.
         payload = {
             "action": "configure-wireguard-tunnel",
             "name": name,
@@ -159,7 +156,7 @@ class SteeringManager:
 
         return self._patch(url, payload, action)
 
-    def _apply_firewall_rule(self, action):                                        # Handles firewall configuration.
+    def _apply_firewall_rule(self, action):                                                              # Handles firewall configuration.
         rule_id = action.get("name")
         params = copy.deepcopy(action.get("parameters", {}))
 
@@ -273,51 +270,26 @@ class SteeringManager:
         return self._patch(url, payload, action)
 
     # ============================================================
-    # REST helper
+    # PATCH request sender to forwarder
     # ============================================================
-
-    def _patch(self, url: str, payload, action):
-
-        logging.info("PATCH %s", url)
+    def _patch(self, url: str, payload, action):                                           #common helper that sends RESTCONF PATCH requests to forwarder
+        logging.info("PATCH %s", url)                                                      #Prints the target URL and the payload for debugging
         logging.info("Payload: %s", json.dumps(payload, indent=2))
 
-        response = requests.patch(
+        response = requests.patch(                                                         #Sends the actual HTTP PATCH request to the forwarder.
             url,
             headers=self.headers,
             data=json.dumps(payload),
             timeout=self.timeout,
         )
 
-        try:
-            response_body = response.json() if response.text else None
-        except Exception:
-            response_body = response.text if response.text else None
-
         if 200 <= response.status_code < 300:
             return {
                 "status": "success",
-                "action": action.get("action"),
-                "target": action.get("name") or action.get("traffic-class"),
                 "http-status": response.status_code,
-                "response": response_body,
-            }
-
+            }    
         return {
             "status": "error",
-            "action": action.get("action"),
-            "target": action.get("name") or action.get("traffic-class"),
             "http-status": response.status_code,
-            "response": response_body,
         }
 
-    # ============================================================
-    # Result helpers
-    # ============================================================
-
-    def _result_error(self, action, reason: str):
-        return {
-            "status": "error",
-            "action": action.get("action"),
-            "target": action.get("name") or action.get("traffic-class"),
-            "reason": reason,
-        }
