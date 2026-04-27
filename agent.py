@@ -755,7 +755,7 @@ if __name__ == "__main__":
             }
 
     # Temporary fake steering manager for checking all actions received from agent.py
-    """class FakeSteeringManager:
+    class FakeSteeringManager:
         def execute_decision(self, decision):
             print("\n===== DRY-RUN steering_manager received =====")
             print(json.dumps(decision, indent=2))
@@ -764,7 +764,7 @@ if __name__ == "__main__":
                 "received-action": decision.get("action"),
                 "target-type": decision.get("target-type"),
                 "name": decision.get("name"),
-            }"""
+            }
 
     # Temporary fake state writer for testing before real state_writer.py is ready
     class FakeStateWriter:
