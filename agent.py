@@ -775,7 +775,6 @@ if __name__ == "__main__":
                 "steering_state": steering_state
             }
             print("\n===== DRY-RUN state_writer written into JSON file =====")
-            print(json.dumps(state, indent=2))
             with open("/tmp/fake_state.json", "w") as f:
                 json.dump(state, f, indent=2)
             return "/tmp/fake_state.json"
