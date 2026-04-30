@@ -40,10 +40,10 @@ class SteeringManager:
                 return self._install_traffic_class(action)
 
             if action_type == "set-active-path":
-                return self._set_active_path(action)
+                return self._ordered_failover(action)
 
             if action_type == "set-load-balance-policy":
-                return self._set_load_balance_policy(action)
+                return self._weighted_ecmp(action)
 
             return self._result_error(                                                       #If none of the known action types match, return an error dictionary.
                 action=action,
@@ -61,7 +61,7 @@ class SteeringManager:
     # Action handlers
     # ============================================================
 
-    def _apply_wan_link_config(self, action):
+    def _apply_wan_link_config(self, action):                                                 # WAN link configuration
         name = action.get("name")                                                             # reads the WAN link name from the action dictionary.
         params = copy.deepcopy(action.get("parameters", {}))                                  # reads the "parameters" dictionary from the action and makes a deep copy of it.
 
@@ -73,9 +73,6 @@ class SteeringManager:
         address_mode = params.get("address-mode")
         
         payload = {                                                                           # Builds the JSON payload to send.
-            "action": "configure-wan-link",
-            "name": name,
-            "target-type": "wan-link",
             "wan-link": {
                 "name": name,
                 "interface-name": params.get("interface-name"),
@@ -95,7 +92,7 @@ class SteeringManager:
         return self._patch(url, payload, action)
         
 
-    def _apply_lan_link_config(self, action):                                                    # Handles LAN link configuration.
+    def _apply_lan_link_config(self, action):                                                    # LAN link configuration
         name = action.get("name")
         params = copy.deepcopy(action.get("parameters", {}))
         dhcp = copy.deepcopy(params.get("dhcp-server", {}))
@@ -106,9 +103,6 @@ class SteeringManager:
         url = f"{self.base_url}/restconf/data/forwarder:lan-links/lan-link={name}"               # Builds the LAN RESTCONF URL.
         
         payload = {                                                                              # Builds the JSON payload to send.
-            "action": "configure-lan-link",
-            "name": name,
-            "target-type": "lan-link",
             "lan-link": {
                 "name": name,
                 "admin-enabled": params.get("admin-enabled"),
@@ -125,7 +119,7 @@ class SteeringManager:
 
         return self._patch(url, payload, action)
 
-    def _apply_tunnel_config(self, action):                                                        # handles LAN link configuration
+    def _apply_tunnel_config(self, action):                                                        # Wireguard tunnelc onfiguration
         name = action.get("name")
         params = copy.deepcopy(action.get("parameters", {}))
 
@@ -133,10 +127,7 @@ class SteeringManager:
             return self._result_error(action, "Tunnel name is missing")                           # checks that LAN name exists.
 
         url = f"{self.base_url}/restconf/data/forwarder:tunnels/tunnel={name}"                    # Builds the Tunnel RESTCONF URL.
-        payload = {
-            "action": "configure-wireguard-tunnel",
-            "name": name,
-            "target-type": "tunnel",
+        payload = {,
             "tunnel": {
                 "name": name,
                 "bind-wan-link": params.get("bind-wan-link"),
@@ -156,7 +147,7 @@ class SteeringManager:
 
         return self._patch(url, payload, action)
 
-    def _apply_firewall_rule(self, action):                                                              # Handles firewall configuration.
+    def _apply_firewall_rule(self, action):                                                              # apply-firewall rule
         rule_id = action.get("name")
         params = copy.deepcopy(action.get("parameters", {}))
 
@@ -165,8 +156,6 @@ class SteeringManager:
 
         url = f"{self.base_url}/restconf/data/forwarder:firewall/rule={rule_id}"
         payload = {
-            "action": "apply-firewall-rule",
-            "target-type": "firewall-rule",
             "rule": {
                 "id": rule_id,
                 "action": params.get("action"),
@@ -181,7 +170,7 @@ class SteeringManager:
 
         return self._patch(url, payload, action)
 
-    def _install_traffic_class(self, action):
+    def _install_traffic_class(self, action):                                                              # Install traffioc classifier
         traffic_class = action.get("traffic-class")
         fwmark = action.get("fwmark")
         match = copy.deepcopy(action.get("match", {}))
@@ -193,8 +182,6 @@ class SteeringManager:
 
         url = f"{self.base_url}/restconf/data/forwarder:traffic-classes/classifier={traffic_class}"
         payload = {
-            "action": "install-traffic-classifier",
-            "target-type": "traffic-class",
             "class": {
                 "name": traffic_class,
                 "fwmark": fwmark,
@@ -212,8 +199,7 @@ class SteeringManager:
 
         return self._patch(url, payload, action)
 
-    def _set_active_path(self, action):
-
+    def _ordered_failover(self, action):
         traffic_class = action.get("traffic-class")
 
         if not traffic_class:
@@ -222,8 +208,6 @@ class SteeringManager:
         url = f"{self.base_url}/restconf/data/forwarder:steering/active-path={traffic_class}"
 
         payload = {
-            "action": "set-active-path",
-            "target-type": "steering",
             "steering": {
                 "class": traffic_class,
                 "selected-path": action.get("selected-path"),
@@ -239,8 +223,7 @@ class SteeringManager:
 
         return self._patch(url, payload, action)
 
-    def _set_load_balance_policy(self, action):
-        
+    def _weighted_ecmp(self, action):
         traffic_class = action.get("traffic-class")
         selected_paths = action.get("selected-path", [])
 
@@ -253,8 +236,6 @@ class SteeringManager:
         url = f"{self.base_url}/restconf/data/forwarder:steering/load-balance={traffic_class}"
 
         payload = {
-            "action": "set-load-balance-policy",
-            "target-type": "steering",
             "steering": {
                 "class": traffic_class,
                 "selected-path": selected_paths,
