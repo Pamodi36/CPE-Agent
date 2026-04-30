@@ -769,6 +769,11 @@ if __name__ == "__main__":
     # Temporary fake state writer for testing before real state_writer.py is ready
     class FakeStateWriter:
         def write_state(self, wan_link_states, tunnel_states, steering_state):
+            state = {
+                "wan_link_states": wan_link_states,
+                "tunnel_states": tunnel_states,
+                "steering_state": steering_state
+            }
             print("\n===== DRY-RUN state_writer written into JSON file =====")
             print(json.dumps(state, indent=2))
             with open("/tmp/fake_state.json", "w") as f:
