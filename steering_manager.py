@@ -78,9 +78,7 @@ class SteeringManager:
                 "interface-name": params.get("interface-name"),
                 "role": params.get("role"),
                 "admin-enabled": params.get("admin-enabled"),
-                "address-mode": address_mode,
-                "nat-enabled": params.get("nat-enabled"),
-            },
+                "address-mode": address_mode,            },
         }                                
         if address_mode == "static":
             payload["wan-link"]["static-address"] = params.get("static-address")
@@ -192,8 +190,6 @@ class SteeringManager:
                     "dst-port": match.get("dst-port"),
                 },
             },
-            "marking-mode": action.get("marking-mode"),
-            "default-unmatched-fwmark": action.get("default-unmatched-fwmark"),
         }
 
         return self._patch(url, payload, action)
@@ -210,13 +206,7 @@ class SteeringManager:
             "steering": {
                 "class": traffic_class,
                 "selected-path": action.get("selected-path"),
-                "selected-path-type": action.get("selected-path-type"),
-                "decision-status": action.get("decision-status"),
-                "reason": action.get("reason"),
-                "last-change": action.get("last-change"),
                 "slo-policy": action.get("slo-policy"),
-                "candidate-summary": action.get("candidate-summary"),
-                "selected-state": action.get("selected-state"),
             },
         }
 
