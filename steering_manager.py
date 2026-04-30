@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 
 class SteeringManager:
     def __init__(self):
-        self.base_url = "http://forwarder:9090"
+        self.base_url = "http://vcpe-forwarder:9090"
         self.timeout = 5                                                                      #if the forwarder does not respond within 5 seconds, the request will fail.
         self.headers = {
             "Content-Type": "application/yang-data+json",                                     #tells forwarder that the requests are sending in YANG JSON format. 
