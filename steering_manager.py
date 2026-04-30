@@ -134,7 +134,6 @@ class SteeringManager:
                 "admin-enabled": params.get("admin-enabled"),
                 "local-address": params.get("local-address"),
                 "local-port": params.get("local-port"),
-                "local-private-key": params.get("local-private-key"),
                 "local-public-key": params.get("local-public-key"),
                 "peer-address": params.get("peer-address"),
                 "peer-port": params.get("peer-port"),
