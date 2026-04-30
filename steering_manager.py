@@ -214,20 +214,20 @@ class SteeringManager:
 
     def _weighted_ecmp(self, action):
         traffic_class = action.get("traffic-class")
-        selected_paths = action.get("selected-path", [])
+        eligible-paths = action.get("eligible-paths", [])
 
         if not traffic_class:
             return self._result_error(action, "Traffic class is missing")
 
-        if not isinstance(selected_paths, list):
-            return self._result_error(action, "selected-path must be a list")
+        if not isinstance(eligible-paths, list):
+            return self._result_error(action, "eligible-paths must be a list")
 
-        url = f"{self.base_url}/restconf/data/forwarder:steering/load-balance={traffic_class}"
+        url = f"{self.base_url}/restconf/data/forwarder:steering/weighted_ecmp={traffic_class}"
 
         payload = {
             "steering": {
                 "class": traffic_class,
-                "selected-path": selected_paths,
+                "eligible-paths": eligible_names,,
                 "selected-path-type": action.get("selected-path-type"),
                 "decision-status": action.get("decision-status"),
                 "reason": action.get("reason"),
