@@ -127,7 +127,7 @@ class SteeringManager:
             return self._result_error(action, "Tunnel name is missing")                           # checks that LAN name exists.
 
         url = f"{self.base_url}/restconf/data/forwarder:tunnels/tunnel={name}"                    # Builds the Tunnel RESTCONF URL.
-        payload = {,
+        payload = {
             "tunnel": {
                 "name": name,
                 "bind-wan-link": params.get("bind-wan-link"),
