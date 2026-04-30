@@ -227,7 +227,7 @@ class SteeringManager:
         payload = {
             "steering": {
                 "class": traffic_class,
-                "eligible-paths": eligible_names,,
+                "eligible-paths": eligible_names,
                 "selected-path-type": action.get("selected-path-type"),
                 "decision-status": action.get("decision-status"),
                 "reason": action.get("reason"),
