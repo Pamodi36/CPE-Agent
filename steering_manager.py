@@ -292,9 +292,11 @@ class SteeringManager:
             "status": "error",
             "http-status": response.status_code,
         }"""
-    """==========================================================================================================
+    """
+    ==========================================================================================================
     Test code without forwarder module. need to remove this once forwarder is present
-    """===========================================================================================================
+   ===========================================================================================================
+    """
     def _patch(self, url: str, payload, action):                                         
         logging.info("DRY-RUN PATCH %s", url)                                             
         logging.info("Payload: %s", json.dumps(payload, indent=2))
