@@ -521,7 +521,7 @@ class Agent:
                             "min-bandwidth-kbps": policy.get("min-bandwidth-kbps"),
                         },
                         "candidate-summary": {
-                            "eligible": eligible_names
+                            "eligible": eligible_names,
                             "rejected": rejected,
                         },
                     }
