@@ -16,7 +16,6 @@ from config_reader import ConfigReader
 from steering_manager import SteeringManager            
 #from monitoring_manager import MonitoringManager        #REMOVE COMMENT 
 
-#info messages and errors are shown
 logging.basicConfig(level=logging.INFO)
 
 class Agent:
@@ -26,55 +25,60 @@ class Agent:
         #self.state_writer = StateWriter()                #REMOVE COMMENT 
         self.steering_manager = SteeringManager()        
         #self.monitoring_manager = MonitoringManager()    #REMOVE COMMENT 
-        #self.generated_tunnel_keys = {}
-        private_key = WireguardKey.generate()
-        public_key = private_key.public_key()
+        self.generated_tunnel_keys = {}
 
     # =====================================================================================
     # Basic helpers
     # =====================================================================================
-
-    def _allocate_fwmark(self, class_name, index):  #called by "_make_steering_decisions()"
-        # Agent-assigned fwmark for a traffic class.
+    def _allocate_fwmark(self, class_name, index):                                                   #called by "_make_steering_decisions()"                                                                                           
         return 1000 + index
 
-    def _index_states_by_name(self, states):  #called by "_make_steering_decisions()"
+    def _index_states_by_name(self, states):                                                         #called by "_make_steering_decisions()"
         indexed = {}
-        for item in states:          #Loops through each state item in the list
-            name = item.get("name")  #Reads the name field from the state dictionary
+        for item in states:                                                                          #Loops through each state item in the list
+            name = item.get("name")                                                                  #Reads the name field from the state dictionary
             if name:
-                indexed[name] = item #If the state has a name, store that item in the dictionary using the name as key
+                indexed[name] = item                                                                 #If the state has a name, store that item in the dictionary using the name as key
         return indexed
+        
+    def _generate_wireguard_key_pair(self):
+        try:
+            private_key = WireguardKey.generate()
+            public_key = private_key.public_key()
+    
+            return private_key, public_key
 
-    def _store_tunnel_keys_in_datastore(self, tunnel_name, public_key):         #Store generated tunnel keys in YANG datastore through RESTCONF
-        if not tunnel_name or not public_key:                                                #If any required value is missing, return False
+    except Exception as e:
+        logging.exception("Failed to generate WireGuard key pair: %s", e)
+        return None, None
+
+    def _store_tunnel_keys_in_datastore(self, tunnel_name, public_key):                              #Store generated tunnel keys in YANG datastore through RESTCONF
+        if not tunnel_name or not public_key:                                                        #If any required value is missing, return False
             return False
 
         url = f"http://127.0.0.1:8383/restconf/data/sdwan-cpe:sdwan/overlay/tunnel={tunnel_name}"
 
         headers = {
-            "Content-Type": "application/yang-data+json",                                    #JSON in YANG format is being sent and expected
+            "Content-Type": "application/yang-data+json",                                            #JSON in YANG format is being sent and expected
             "Accept": "application/yang-data+json"
         }
-
-        payload = {                                                                          #JSON body to patch into the datastore.
+        payload = {                                                                                  #JSON body to patch into the datastore.
             "sdwan-cpe:tunnel": {
                 "name": tunnel_name,
                 "local-public-key": public_key
             }
         }
-
         try:
             response = requests.patch(                                                      #Sends an HTTP PATCH request to update the datastore
                 url,                                                                        #target RESTCONF endpoint
                 headers=headers,                                                            #content type and accept type
                 data=json.dumps(payload),                                                   #converts Python dictionary to JSON string
-                auth=("admin", "admin")                                                     #basic authentication
+                #auth=("admin", "admin")                                                     #basic authentication
             )
             response.raise_for_status()                                                     #Raises an exception if the server returned an HTTP error like 400 or 500
             return True
         except Exception as e:
-            logging.exception("Failed to store tunnel keys in datastore for %s: %s", tunnel_name, e)
+            logging.exception("Failed to store local-public key in datastore for %s: %s", tunnel_name, e)
             return False
 
     def _candidate_satisfies_slo(self, candidate_state, policy):
@@ -142,36 +146,36 @@ class Agent:
                 for name in ordered_names:
                     state = tunnel_state_map.get(name)
                     if state:
-                        candidates.append(("tunnel", name, state))        #For each configured tunnel name, look up its state and add it as candidate.
+                        candidates.append(("tunnel", name, state))                      #For each configured tunnel name, look up its state and add it as candidate.
 
             elif failover_link_type == "wan-link":                       
                 ordered_names = []
                 primary = policy.get("primary-wan-link")
                 if primary:
-                    ordered_names.append(primary)                          #If a primary wan link exists, add it first
-                ordered_names.extend(policy.get("secondary-wan-link", [])) #Then append all secondary wan links
+                    ordered_names.append(primary)                                       #If a primary wan link exists, add it first
+                ordered_names.extend(policy.get("secondary-wan-link", []))              #Then append all secondary wan links
 
                 for name in ordered_names:
                     state = wan_state_map.get(name)
                     if state:
-                        candidates.append(("wan-link", name, state))       #For each configured wan link, look up its state and add it as candidate
+                        candidates.append(("wan-link", name, state))                    #For each configured wan link, look up its state and add it as candidate
 
         elif steering_mode == "load-balance":
-            lb_type = policy.get("load-balance-link-type")                 #If mode is load-balance, read whether balancing uses tunnels or WAN links.
+            lb_type = policy.get("load-balance-link-type")                              #If mode is load-balance, read whether balancing uses tunnels or WAN links.
 
             if lb_type == "tunnel":
                 for name in policy.get("load-balance-tunnel", []):
                     state = tunnel_state_map.get(name)
                     if state:
-                        candidates.append(("tunnel", name, state))         #adds configured tunnels as load-balance candidates.
+                        candidates.append(("tunnel", name, state))                      #adds configured tunnels as load-balance candidates.
 
             elif lb_type == "wan-link":
                 for name in policy.get("load-balance-wan-link", []):
                     state = wan_state_map.get(name)
                     if state:
-                        candidates.append(("wan-link", name, state))       #adds configured WAN links as load-balance candidates
+                        candidates.append(("wan-link", name, state))                    #adds configured WAN links as load-balance candidates
 
-        return candidates                                                  #returns the final candidate list.
+        return candidates                                                               #returns the final candidate list.
 
     # =====================================================================================
     # State building
@@ -180,24 +184,24 @@ class Agent:
 
         wan_link_states = []
 
-        for wan_link in wan_links:                                 #Loops over each WAN link from configuration.
+        for wan_link in wan_links:                                                      #Loops over each WAN link from configuration.
             name = wan_link.get("name")
             if not name:
-                continue                                           #Reads WAN-link name.If missing, skip that entry.
+                continue                                                                #Reads WAN-link name.If missing, skip that entry.
 
-            metric = self.metric_reader.get_wan_link_metric(name)  #Gets current metrics for this WAN link using metric_reader.
+            metric = self.metric_reader.get_wan_link_metric(name)                       #Gets current metrics for this WAN link using metric_reader.
 
             if wan_link.get("admin-enabled") == False: 
                 oper_status = "down"
-                reason = "wan link admin-disabled"                 #If config says WAN link is administratively disabled, state is down
+                reason = "wan link admin-disabled"                 #                    If config says WAN link is administratively disabled, state is down
             elif metric["stale"]:
-                oper_status = "down"                               #If metric data is stale, state is down.
+                oper_status = "down"                                                    #If metric data is stale, state is down.
                 reason = metric["reason"]
             else:
                 oper_status = "up"
                 reason = metric["reason"]
 
-            state = {                                             #Builds one state dictionary for each WAN link
+            state = {                                                                   #Builds one state dictionary for each WAN link
                 "name": name,
                 "oper-status": oper_status,
                 "latency-ms": metric["latency_ms"] if metric["latency_ms"] is not None else None,
@@ -209,8 +213,7 @@ class Agent:
                 "metric-source": metric["source"] if metric["source"] is not None else None,
                 "state-reason": reason,
             }
-
-            wan_link_states.append(state)                         #Adds the state to the result list.
+            wan_link_states.append(state)                                               #Adds the state to the result list.
 
         return wan_link_states
 
@@ -219,14 +222,14 @@ class Agent:
         tunnel_states = []
 
         for tunnel in tunnels:
-            name = tunnel.get("name")                             #Loops over each tunnel from configuration.
+            name = tunnel.get("name")                                                  #Loops over each tunnel from configuration.
             if not name:
-                continue                                          #Reads tunnel name.If missing, skip that entry.
+                continue                                                               #Reads tunnel name.If missing, skip that entry.
 
-            metric = self.metric_reader.get_tunnel_metric(name)   #Gets current metrics for this WAN link using metric_reader.
+            metric = self.metric_reader.get_tunnel_metric(name)                        #Gets current metrics for this WAN link using metric_reader.
 
             if tunnel.get("admin-enabled") == False:
-                oper_status = "down"                              #If config says tunnel is administratively disabled, state is down
+                oper_status = "down"                                                   #If config says tunnel is administratively disabled, state is down
                 reason = "tunnel admin-disabled"
             elif metric["stale"]:                                 #If metric data is stale, state is down.
                 oper_status = "down"
@@ -312,7 +315,7 @@ class Agent:
 
             tunnel_params.update(self.generated_tunnel_keys.get(tunnel_name, {}))
 
-            interface_actions.append({                                                        #Adds one action per tunne, telling the executor to apply its config.
+            interface_actions.append({                                                        #Adds one action per tunnel, telling the executor to apply its config.
                 "action": "apply-tunnel-config",
                 "target-type": "tunnel",
                 "name": tunnel_name,
