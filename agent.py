@@ -147,26 +147,25 @@ class Agent:
         bw = candidate_state.get("available-bandwidth-kbps")
 
         return (
-            latency if latency is not None else 10**9,  #first compare latency (latency has the highest priority in ranking)
-            jitter if jitter is not None else 10**9,    #then jitter
-            loss if loss is not None else 10**9,        #then loss
-            -(bw if bw is not None else 0),             #then bandwidth (higher bandwidth is better, so it uses negative bandwidth)
+            latency if latency is not None else 10**9,                                   #first compare latency (latency has the highest priority in ranking)
+            jitter if jitter is not None else 10**9,                                     #then jitter
+            loss if loss is not None else 10**9,                                         #then loss
+            -(bw if bw is not None else 0),                                              #then bandwidth (higher bandwidth is better, so it uses negative bandwidth)
         )
 
-    def _extract_candidate_states(self, policy, wan_state_map, tunnel_state_map):
-        #Return candidate type and candidate state objects according to policy.
-        steering_mode = policy.get("steering-mode")          #Reads steering mode from policy. Default is "failover"
+    def _extract_candidate_states(self, policy, wan_state_map, tunnel_state_map):        #Return candidate type and candidate state objects according to policy.
+        steering_mode = policy.get("steering-mode")                                      #Reads steering mode from policy. Default is "failover"
         candidates = []
 
         if steering_mode == "failover": 
-            failover_link_type = policy.get("failover-link-type")         #If mode is failover, read whether policy uses tunnels or WAN links.
+            failover_link_type = policy.get("failover-link-type")                        #If mode is failover, read whether policy uses tunnels or WAN links.
 
             if failover_link_type == "tunnel":
                 ordered_names = []
                 primary = policy.get("primary-tunnel")
                 if primary:
-                    ordered_names.append(primary)                         #If a primary tunnel exists, add it first
-                ordered_names.extend(policy.get("secondary-tunnel", []))  #Then append all secondary tunnels.
+                    ordered_names.append(primary)                                       #If a primary tunnel exists, add it first
+                ordered_names.extend(policy.get("secondary-tunnel", []))                #Then append all secondary tunnels.
 
                 for name in ordered_names:
                     state = tunnel_state_map.get(name)
@@ -205,7 +204,6 @@ class Agent:
     # =====================================================================================
     # State building
     # =====================================================================================
-
     def _build_wan_link_states(self, wan_links):
 
         wan_link_states = []
@@ -421,17 +419,17 @@ class Agent:
         for policy in steering_policies:                                     #Loops through each steering policy.
             traffic_class = policy.get("class")                              #Reads traffic class associated with this policy. 
             if not traffic_class:
-                continue                                                     #Skip if missing
+                continue                                                                                 #Skip if missing
 
-            steering_mode = policy.get("steering-mode",)                     #Reads steering mode
-            candidates = self._extract_candidate_states(policy, wan_state_map, tunnel_state_map) #Builds the list of candidate paths according to this policy.
+            steering_mode = policy.get("steering-mode",)                                                 #Reads steering mode
+            candidates = self._extract_candidate_states(policy, wan_state_map, tunnel_state_map)         #Builds the list of candidate paths according to this policy.
 
-            eligible = []                                                   #Creates lists for accepted and rejected candidates                                 
+            eligible = []                                                                                #Creates lists for accepted and rejected candidates                                 
             rejected = []
 
-            for link_type, name, state in candidates:                       #Loops through each candidate.
+            for link_type, name, state in candidates:                                                    #Loops through each candidate.
                 if self._candidate_satisfies_slo(state, policy):
-                    eligible.append((link_type, name, state))               #If candidate passes SLO checks, put it in eligible
+                    eligible.append((link_type, name, state))                                            #If candidate passes SLO checks, put it in eligible
                 else:
                     rejected.append({                                                                    #If candidate fails, add summary info into rejected
                         "name": name,
@@ -503,18 +501,18 @@ class Agent:
 
                 decisions.append(decision)
 
-            elif steering_mode == "load-balance":                                                 #Enter load-balance logic
-                if eligible:                                                                      #If some candidates satisfy SLO:                       
-                    eligible_sorted = sorted(eligible, key=lambda x: self._candidate_score(x[2])) #Sort candidates using the score function.
-                    selected_names = [item[1] for item in eligible_sorted]                        #Extract only the candidate names in sorted order
+            elif steering_mode == "load-balance":                                                           #Enter load-balance logic
+                if eligible:                                                                                #If some candidates satisfy SLO:                       
+                    eligible_sorted = sorted(eligible, key=lambda x: self._candidate_score(x[2]))           #Sort candidates using the score function.
+                    eligible_names = [item[1] for item in eligible_sorted]                                  #Extract only the candidate names in sorted order
 
-                    decision = {                                                                  #Creates load-balance decision listing all selected paths
+                    decision = {                                                                            #Creates load-balance decision listing all selected paths
                         "action": "set-load-balance-policy",
                         "traffic-class": traffic_class,
-                        "selected-path": selected_names,
+                        "eligible-paths": eligible_names,
                         "selected-path-type": policy.get("load-balance-link-type"),
                         "decision-status": "selected",
-                        "reason": "load-balance across candidates satisfying SLO",
+                        "reason": "Candidates satisfying SLO for Load-Balance",
                         "last-change": now_ts,
                         "slo-policy": {
                             "max-latency-ms": policy.get("max-latency-ms"),
@@ -523,7 +521,7 @@ class Agent:
                             "min-bandwidth-kbps": policy.get("min-bandwidth-kbps"),
                         },
                         "candidate-summary": {
-                            "eligible": selected_names,
+                            "eligible": eligible_names
                             "rejected": rejected,
                         },
                     }
