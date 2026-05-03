@@ -46,9 +46,9 @@ class Agent:
             private_key = WireguardKey.generate()
             public_key = private_key.public_key()
             return private_key, public_key
-    except Exception as e:
-        logging.exception("Failed to generate WireGuard key pair: %s", e)
-        return None, None
+        except Exception as e:
+            logging.exception("Failed to generate WireGuard key pair: %s", e)
+            return None, None
 
     def _store_tunnel_keys_in_datastore(self, tunnel_name, public_key):                              #Store generated tunnel keys in YANG datastore through RESTCONF
         if not tunnel_name or not public_key:                                                        #If any required value is missing, return False
