@@ -18,7 +18,7 @@ class SteeringManager:
         }
         
     # ============================================================
-    # Interaction point with agent.py
+    # Public Interaction point
     # ============================================================
     def execute_decision(self, action):                                                       #main method that agent.py calls.
         action_type = action.get("action")                                                    #reads the "action" field from the incoming action dictionary from "agent.py"
@@ -56,7 +56,16 @@ class SteeringManager:
                 action=action,
                 reason=str(e),
             )
-
+    def get_nat_state(self):                                                                 #poll NAT status from forwarder
+        url = f"{self.base_url}/restconf/data/forwarder:nat-state"
+        response = requests.get(
+            url,
+            headers={"Accept": "application/yang-data+json"},
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return response.json()
+    
     # ============================================================
     # Action handlers
     # ============================================================
@@ -73,6 +82,7 @@ class SteeringManager:
         address_mode = params.get("address-mode")
         
         payload = {                                                                           # Builds the JSON payload to send.
+            "nat-check-required": action.get("nat-check-required"),
             "wan-link": {
                 "name": name,
                 "interface-name": params.get("interface-name"),
