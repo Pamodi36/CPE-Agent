@@ -30,7 +30,6 @@ class Agent:
     # =====================================================================================
     # Basic helpers
     # =====================================================================================
-
     def _allocate_fwmark(self, class_name, index):  #called by "_make_steering_decisions()"
         # Agent-assigned fwmark for a traffic class.
         return 1000 + index
@@ -70,6 +69,7 @@ class Agent:
                 check=True,
             )
             return result.stdout.decode("utf-8").strip()                                     #Converts the output into text and returns the public key.
+            
         except Exception as e:
             logging.exception("Failed to derive WireGuard public key: %s", e)
             return None
@@ -84,27 +84,54 @@ class Agent:
             "Content-Type": "application/yang-data+json",                                    #JSON in YANG format is being sent and expected
             "Accept": "application/yang-data+json"
         }
-
         payload = {                                                                          #JSON body to patch into the datastore.
             "sdwan-cpe:tunnel": {
                 "name": tunnel_name,
                 "local-public-key": public_key
             }
         }
-
         try:
             response = requests.patch(                                                      #Sends an HTTP PATCH request to update the datastore
                 url,                                                                        #target RESTCONF endpoint
                 headers=headers,                                                            #content type and accept type
                 data=json.dumps(payload),                                                   #converts Python dictionary to JSON string
-                auth=("admin", "admin")                                                     #basic authentication
             )
             response.raise_for_status()                                                     #Raises an exception if the server returned an HTTP error like 400 or 500
             return True
         except Exception as e:
             logging.exception("Failed to store tunnel keys in datastore for %s: %s", tunnel_name, e)
             return False
+            
+    def _store_nat_type_in_datastore(self, wan_name, nat_type):
+        if not wan_name or not nat_type:
+            return False
 
+        url = f"http://127.0.0.1:8383/restconf/data/sdwan-cpe:sdwan/interfaces/underlay/wan-link={wan_name}"
+
+        headers = {
+            "Content-Type": "application/yang-data+json",
+            "Accept": "application/yang-data+json"
+        }
+        payload = {
+            "sdwan-cpe:wan-link": {
+                "name": wan_name,
+                "nat-type": nat_type
+            }
+        }
+        try:
+            response = requests.patch(
+                url,
+                headers=headers,
+                data=json.dumps(payload),
+                timeout=5,
+            )
+            response.raise_for_status()
+            return True
+            
+        except Exception as e:
+            logging.exception("Failed to store NAT type in datastore for %s: %s", wan_name, e)
+            return False
+            
     def _candidate_satisfies_slo(self, candidate_state, policy):
         if not candidate_state:                                                            #If there is no state object, candidate is invalid.
             return False
