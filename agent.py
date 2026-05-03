@@ -293,11 +293,14 @@ class Agent:
 
         wan_links = sdwan_root.get("interfaces", {}).get("underlay", {}).get("wan-link", [])     #Reads WAN-link list from config.
         for wan_link in wan_links:                                                               #Loops through WAN links.
+            nat_check_required = wan_link.get("role") != "ipvpn"
+            
             interface_actions.append({
                 "action": "apply-wan-link-config",                                               #Adds one action per WAN link telling the executor to apply its config.
                 "target-type": "wan-link",
                 "name": wan_link.get("name"),
                 "parameters": copy.deepcopy(wan_link),
+                "nat-check-required": nat_check_required,
             })
 
         lan_links = sdwan_root.get("interfaces", {}).get("lan", {}).get("lan-link", [])          #Reads LAN links from config.
