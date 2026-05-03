@@ -139,7 +139,7 @@ module sdwan-cpe {
               enum broadband;
               enum fiber;
               enum lte;
-              enum other;
+              enum ipvpn;
             }
             description
               "Administrative role or access type of this WAN link";
