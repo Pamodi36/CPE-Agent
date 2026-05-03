@@ -9,7 +9,7 @@ import time
 import requests
 
 #import other python modules
-from wireguard_tools import WireguardKey
+from python_wireguard import Key
 from config_reader import ConfigReader
 #from metric_reader import MetricReader                  #REMOVE COMMENT 
 #from state_writer import StateWriter                    #REMOVE COMMENT 
@@ -43,8 +43,7 @@ class Agent:
         
     def _generate_wireguard_key_pair(self):
         try:
-            private_key = WireguardKey.generate()
-            public_key = private_key.public_key()
+            private_key, public_key = Key.key_pair()
             return private_key, public_key
         except Exception as e:
             logging.exception("Failed to generate WireGuard key pair: %s", e)
