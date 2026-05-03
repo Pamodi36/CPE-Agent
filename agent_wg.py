@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-import copy #to make copied versions of dictionaries/lists so the original config objects are not modified by mistake
-import subprocess #to derive a WireGuard public key from a private key
-import json #converting Python objects into JSON strings
-import logging #to print info and error logs.
+import copy                                                          #to make copied versions of dictionaries/lists so the original config objects are not modified by mistake
+import subprocess                                                    #to derive a WireGuard public key from a private key
+import json                                                          #converting Python objects into JSON strings
+import logging                                                       #to print info and error logs.
 import time
 import requests
 
@@ -45,9 +45,7 @@ class Agent:
         try:
             private_key = WireguardKey.generate()
             public_key = private_key.public_key()
-    
             return private_key, public_key
-
     except Exception as e:
         logging.exception("Failed to generate WireGuard key pair: %s", e)
         return None, None
@@ -55,9 +53,7 @@ class Agent:
     def _store_tunnel_keys_in_datastore(self, tunnel_name, public_key):                              #Store generated tunnel keys in YANG datastore through RESTCONF
         if not tunnel_name or not public_key:                                                        #If any required value is missing, return False
             return False
-
         url = f"http://127.0.0.1:8383/restconf/data/sdwan-cpe:sdwan/overlay/tunnel={tunnel_name}"
-
         headers = {
             "Content-Type": "application/yang-data+json",                                            #JSON in YANG format is being sent and expected
             "Accept": "application/yang-data+json"
@@ -299,20 +295,17 @@ class Agent:
             tunnel_name = tunnel.get("name")
 
             if tunnel_name not in self.generated_tunnel_keys:
-                private_key = self._generate_wireguard_private_key()
-                public_key = self._derive_wireguard_public_key(private_key)
+                private_key, public_key = self._generate_wireguard_key_pair()
 
                 if private_key and public_key:
                     self.generated_tunnel_keys[tunnel_name] = {
                         "local-private-key": private_key,
                         "local-public-key": public_key,
                     }
-
                     self._store_tunnel_keys_in_datastore(
                         tunnel_name,
                         public_key
                     )
-
             tunnel_params.update(self.generated_tunnel_keys.get(tunnel_name, {}))
 
             interface_actions.append({                                                        #Adds one action per tunnel, telling the executor to apply its config.
