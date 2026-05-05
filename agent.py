@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-import copy #to make copied versions of dictionaries/lists so the original config objects are not modified by mistake
-import subprocess #to derive a WireGuard public key from a private key
-import json #converting Python objects into JSON strings
-import logging #to print info and error logs.
+import copy                                                                        #to make copied versions of dictionaries/lists so the original config objects are not modified by mistake
+import subprocess                                                                  #to derive a WireGuard public key from a private key
+import json                                                                        #converting Python objects into JSON strings
+import logging                                                                     #to print info and error logs.
 import time
 import requests
 
-#import other python modules
 from config_reader import ConfigReader
 #from metric_reader import MetricReader                  #REMOVE COMMENT 
 #from state_writer import StateWriter                    #REMOVE COMMENT 
 from steering_manager import SteeringManager            
 #from monitoring_manager import MonitoringManager        #REMOVE COMMENT 
 
-#info messages and errors are shown
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO)                                            # to show info messages and errors 
 
 class Agent:
     def __init__(self):                                                            #Creates object for each python module and stores it inside the agent       
@@ -34,213 +32,162 @@ class Agent:
         # Agent-assigned fwmark for a traffic class.
         return 1000 + index
 
-    def _index_states_by_name(self, states):  #called by "_make_steering_decisions()"
+    def _index_states_by_name(self, states):                                                 #called by "_make_steering_decisions()"
         indexed = {}
-        for item in states:          #Loops through each state item in the list
-            name = item.get("name")  #Reads the name field from the state dictionary
+        for item in states:                                                                  #Loops through each state item in the list
+            name = item.get("name")                                                          #Reads the name field from the state dictionary
             if name:
-                indexed[name] = item #If the state has a name, store that item in the dictionary using the name as key
+                indexed[name] = item                                                         #If the state has a name, store that item in the dictionary using the name as key
         return indexed
 
-    def _generate_wireguard_private_key(self): #Generate a random WireGuard private key using 'wg genkey'
+    def _generate_wireguard_private_key(self):                                               #Generate a random WireGuard private key using 'wg genkey'
         try:
             result = subprocess.run(
                 ["wg", "genkey"],
-                stdout=subprocess.PIPE, #captures normal output
-                stderr=subprocess.PIPE, #captures error output
-                check=True,             #raises an exception if the command fails
-            )
-            return result.stdout.decode("utf-8").strip() #Converts the output into text and returns the private key.
+                stdout=subprocess.PIPE,                                                      #captures normal output
+                stderr=subprocess.PIPE,                                                      #captures error output
+                check=True, )                                                                #raises an exception if the command fails
+            return result.stdout.decode("utf-8").strip()                                     #Converts the output into text and returns the private key.
        
-        except Exception as e:          #If anything fails, execution comes here
+        except Exception as e:                                                               #If anything fails, execution comes here
             logging.exception("Failed to generate WireGuard private key: %s", e)
             return None
 
-    def _derive_wireguard_public_key(self, private_key): #Derive WireGuard public key from private key using 'wg pubkey'
-        if not private_key:             #If no private key given, stop immediately and return None
+    def _derive_wireguard_public_key(self, private_key):                                     #Derive WireGuard public key from private key using 'wg pubkey'
+        if not private_key:                                                                  #If no private key given, stop immediately and return None
             return None
-
         try:
             result = subprocess.run(
                 ["wg", "pubkey"],
-                input=(private_key + "\n").encode("utf-8"),  #sends the private key into the command through standard input
+                input=(private_key + "\n").encode("utf-8"),                                  #sends the private key into the command through standard input
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                check=True,
-            )
-            return result.stdout.decode("utf-8").strip()                                     #Converts the output into text and returns the public key.
+                check=True, )
+            return result.stdout.decode("utf-8").strip()                                      #Converts the output into text and returns the public key.
             
         except Exception as e:
             logging.exception("Failed to derive WireGuard public key: %s", e)
             return None
 
-    def _store_tunnel_keys_in_datastore(self, tunnel_name, public_key):         #Store generated tunnel keys in YANG datastore through RESTCONF
-        if not tunnel_name or not public_key:                                                #If any required value is missing, return False
+    def _store_tunnel_keys_in_datastore(self, tunnel_name, public_key):                       #Store generated tunnel keys in YANG datastore through RESTCONF
+        if not tunnel_name or not public_key:                                                 #If any required value is missing, return False
             return False
 
         url = f"http://127.0.0.1:8383/restconf/data/sdwan-cpe:sdwan/overlay/tunnel={tunnel_name}"
 
         headers = {
-            "Content-Type": "application/yang-data+json",                                    #JSON in YANG format is being sent and expected
+            "Content-Type": "application/yang-data+json",                                     #JSON in YANG format is being sent and expected
             "Accept": "application/yang-data+json"
         }
-        payload = {                                                                          #JSON body to patch into the datastore.
+        payload = {                                                                           #JSON body to patch into the datastore.
             "sdwan-cpe:tunnel": {
                 "name": tunnel_name,
-                "local-public-key": public_key
-            }
-        }
+                "local-public-key": public_key }}
         try:
-            response = requests.patch(                                                      #Sends an HTTP PATCH request to update the datastore
-                url,                                                                        #target RESTCONF endpoint
-                headers=headers,                                                            #content type and accept type
-                data=json.dumps(payload),                                                   #converts Python dictionary to JSON string
-            )
-            response.raise_for_status()                                                     #Raises an exception if the server returned an HTTP error like 400 or 500
+            response = requests.patch(                                                       #Sends an HTTP PATCH request to update the datastore
+                url,                                                                         #target RESTCONF endpoint
+                headers=headers,                                                             #content type and accept type
+                data=json.dumps(payload),)                                                   #converts Python dictionary to JSON string
+            
+            response.raise_for_status()                                                      #Raises an exception if the server returned an HTTP error like 400 or 500
             return True
         except Exception as e:
             logging.exception("Failed to store tunnel keys in datastore for %s: %s", tunnel_name, e)
             return False
             
-    def _store_nat_type_in_datastore(self, wan_name, nat_type):
-        if not wan_name or not nat_type:
-            return False
-
-        url = f"http://127.0.0.1:8383/restconf/data/sdwan-cpe:sdwan/interfaces/underlay/wan-link={wan_name}"
-
-        headers = {
-            "Content-Type": "application/yang-data+json",
-            "Accept": "application/yang-data+json"
-        }
-        payload = {
-            "sdwan-cpe:wan-link": {
-                "name": wan_name,
-                "nat-type": nat_type
-            }
-        }
-        try:
-            response = requests.patch(
-                url,
-                headers=headers,
-                data=json.dumps(payload),
-                timeout=5,
-            )
-            response.raise_for_status()
-            return True
-            
-        except Exception as e:
-            logging.exception("Failed to store NAT type in datastore for %s: %s", wan_name, e)
-            return False
-            
     def _candidate_satisfies_slo(self, candidate_state, policy):
-        if not candidate_state:                                                            #If there is no state object, candidate is invalid.
+        if not candidate_state:                                                                     #If there is no state object, candidate is invalid.
             return False
 
-        oper_status = candidate_state.get("oper-status")                                   #Reads the operational status.
-        if oper_status not in ["up", "degraded"]:                                          #Only candidates with up or degraded are accepted. Anything else is rejected
+        oper_status = candidate_state.get("oper-status")                                            #Reads the operational status.
+        if oper_status not in ["up", "degraded"]:                                                   #Only candidates with up or degraded are accepted. Anything else is rejected
             return False
 
-        max_latency = policy.get("max-latency-ms")        #Reads max allowed latency from policy.
+        max_latency = policy.get("max-latency-ms")                                                  #Reads max allowed latency from policy.
         if max_latency is not None:
-            latency = candidate_state.get("latency-ms")   #Reads measured latency from state
-            if latency is None or latency > max_latency:  #Reject if latency is missing or exceeds the threshold.
+            latency = candidate_state.get("latency-ms")                                             #Reads measured latency from state
+            if latency is None or latency > max_latency:                                            #Reject if latency is missing or exceeds the threshold.
                 return False
 
-        max_jitter = policy.get("max-jitter-ms")          #Reads max allowed jitter from policy.
+        max_jitter = policy.get("max-jitter-ms")                                                   #Reads max allowed jitter from policy.
         if max_jitter is not None:
-            jitter = candidate_state.get("jitter-ms")     #Reads measured jitter from state
-            if jitter is None or jitter > max_jitter:     #Reject if jitter is missing or exceeds the threshold
+            jitter = candidate_state.get("jitter-ms")                                              #Reads measured jitter from state
+            if jitter is None or jitter > max_jitter:                                              #Reject if jitter is missing or exceeds the threshold
                 return False
 
-        max_loss = policy.get("max-loss-percent")        #Reads max allowed packet loss from policy.
+        max_loss = policy.get("max-loss-percent")                                                  #Reads max allowed packet loss from policy.
         max_loss = float(max_loss)
         if max_loss is not None:
-            loss = candidate_state.get("loss-percent")   #Reads measured packet loss from state
-            if loss is None or loss > max_loss:          #Reject if packet loss is missing or exceeds the threshold
+            loss = candidate_state.get("loss-percent")                                             #Reads measured packet loss from state
+            if loss is None or loss > max_loss:                                                    #Reject if packet loss is missing or exceeds the threshold
                 return False
 
-        min_bw = policy.get("min-bandwidth-kbps")       #Reads min allowed BW from policy.
+        min_bw = policy.get("min-bandwidth-kbps")                                                  #Reads min allowed BW from policy.
         if min_bw is not None:
-            bw = candidate_state.get("available-bandwidth-kbps") #Reads available BW from state
-            if bw is None or bw < min_bw:               #Reject if BW is missing or less than the threshold
+            bw = candidate_state.get("available-bandwidth-kbps")                                   #Reads available BW from state
+            if bw is None or bw < min_bw:                                                          #Reject if BW is missing or less than the threshold
                 return False
+        return True                                                                                #If all checks pass, candidate satisfies the SLO
 
-        return True                                     #If all checks pass, candidate satisfies the SLO
-
-    def _candidate_score(self, candidate_state):        #to rank candidates (Lower score is better)
-        latency = candidate_state.get("latency-ms")
-        jitter = candidate_state.get("jitter-ms")
-        loss = candidate_state.get("loss-percent")
-        bw = candidate_state.get("available-bandwidth-kbps")
-
-        return (
-            latency if latency is not None else 10**9,                                   #first compare latency (latency has the highest priority in ranking)
-            jitter if jitter is not None else 10**9,                                     #then jitter
-            loss if loss is not None else 10**9,                                         #then loss
-            -(bw if bw is not None else 0),                                              #then bandwidth (higher bandwidth is better, so it uses negative bandwidth)
-        )
-
-    def _extract_candidate_states(self, policy, wan_state_map, tunnel_state_map):        #Return candidate type and candidate state objects according to policy.
-        steering_mode = policy.get("steering-mode")                                      #Reads steering mode from policy. Default is "failover"
+    def _extract_candidate_states(self, policy, wan_state_map, tunnel_state_map):                  #Return candidate type and candidate state objects according to policy.
+        steering_mode = policy.get("steering-mode")                                                #Reads steering mode from policy. Default is "failover"
         candidates = []
 
         if steering_mode == "failover": 
-            failover_link_type = policy.get("failover-link-type")                        #If mode is failover, read whether policy uses tunnels or WAN links.
+            failover_link_type = policy.get("failover-link-type")                                  #If mode is failover, read whether policy uses tunnels or WAN links.
 
             if failover_link_type == "tunnel":
                 ordered_names = []
                 primary = policy.get("primary-tunnel")
                 if primary:
-                    ordered_names.append(primary)                                       #If a primary tunnel exists, add it first
-                ordered_names.extend(policy.get("secondary-tunnel", []))                #Then append all secondary tunnels.
+                    ordered_names.append(primary)                                                 #If a primary tunnel exists, add it first
+                ordered_names.extend(policy.get("secondary-tunnel", []))                          #Then append all secondary tunnels.
 
                 for name in ordered_names:
                     state = tunnel_state_map.get(name)
                     if state:
-                        candidates.append(("tunnel", name, state))        #For each configured tunnel name, look up its state and add it as candidate.
+                        candidates.append(("tunnel", name, state))                               #For each configured tunnel name, look up its state and add it as candidate.
 
             elif failover_link_type == "wan-link":                       
                 ordered_names = []
                 primary = policy.get("primary-wan-link")
                 if primary:
-                    ordered_names.append(primary)                          #If a primary wan link exists, add it first
-                ordered_names.extend(policy.get("secondary-wan-link", [])) #Then append all secondary wan links
+                    ordered_names.append(primary)                                         #If a primary wan link exists, add it first
+                ordered_names.extend(policy.get("secondary-wan-link", []))                #Then append all secondary wan links
 
                 for name in ordered_names:
                     state = wan_state_map.get(name)
                     if state:
-                        candidates.append(("wan-link", name, state))       #For each configured wan link, look up its state and add it as candidate
+                        candidates.append(("wan-link", name, state))                      #For each configured wan link, look up its state and add it as candidate
 
         elif steering_mode == "load-balance":
-            lb_type = policy.get("load-balance-link-type")                 #If mode is load-balance, read whether balancing uses tunnels or WAN links.
+            lb_type = policy.get("load-balance-link-type")                                #If mode is load-balance, read whether balancing uses tunnels or WAN links.
 
             if lb_type == "tunnel":
                 for name in policy.get("load-balance-tunnel", []):
                     state = tunnel_state_map.get(name)
                     if state:
-                        candidates.append(("tunnel", name, state))         #adds configured tunnels as load-balance candidates.
+                        candidates.append(("tunnel", name, state))                       #adds configured tunnels as load-balance candidates.
 
             elif lb_type == "wan-link":
                 for name in policy.get("load-balance-wan-link", []):
                     state = wan_state_map.get(name)
                     if state:
-                        candidates.append(("wan-link", name, state))       #adds configured WAN links as load-balance candidates
-
-        return candidates                                                  #returns the final candidate list.
+                        candidates.append(("wan-link", name, state))                     #adds configured WAN links as load-balance candidates
+        return candidates                                                                #returns the final candidate list.
 
     # =====================================================================================
     # State building
     # =====================================================================================
     def _build_wan_link_states(self, wan_links):
-
         wan_link_states = []
 
-        for wan_link in wan_links:                                 #Loops over each WAN link from configuration.
+        for wan_link in wan_links:                                             #Loops over each WAN link from configuration.
             name = wan_link.get("name")
             if not name:
-                continue                                           #Reads WAN-link name.If missing, skip that entry.
+                continue                                                       #Reads WAN-link name.If missing, skip that entry.
 
-            metric = self.metric_reader.get_wan_link_metric(name)  #Gets current metrics for this WAN link using metric_reader.
+            metric = self.metric_reader.get_wan_link_metric(name)              #Gets current metrics for this WAN link using metric_reader.
 
             if wan_link.get("admin-enabled") == False: 
                 oper_status = "down"
@@ -251,7 +198,6 @@ class Agent:
             else:
                 oper_status = "up"
                 reason = metric["reason"]
-
             state = {                                             #Builds one state dictionary for each WAN link
                 "name": name,
                 "oper-status": oper_status,
@@ -264,13 +210,10 @@ class Agent:
                 "metric-source": metric["source"] if metric["source"] is not None else None,
                 "state-reason": reason,
             }
-
             wan_link_states.append(state)                         #Adds the state to the result list.
-
         return wan_link_states
 
     def _build_tunnel_states(self, tunnels):
-
         tunnel_states = []
 
         for tunnel in tunnels:
@@ -289,7 +232,6 @@ class Agent:
             else:
                 oper_status = "up"
                 reason = metric["reason"]
-
             state = {                                             #Builds one state dictionary for each tunnel
                 "name": name,
                 "oper-status": oper_status,
@@ -304,15 +246,13 @@ class Agent:
                 "state-reason": reason,
             }
             tunnel_states.append(state)
-
         return tunnel_states
 
     # =====================================================================================
     # Config apply actions
     # =====================================================================================
-
-    def _build_interface_apply_actions(self, sdwan_root, changed):
-       #Build execution actions for WAN, LAN, tunnels and firewall,when config changes.
+    
+    def _build_interface_apply_actions(self, sdwan_root, changed):                               #Build execution actions for WAN, LAN and tunnels,when config changes. 
         if not changed:                                                                          #If config did not change, do nothing and return empty list.
             return []
 
@@ -324,11 +264,9 @@ class Agent:
             
             interface_actions.append({
                 "action": "apply-wan-link-config",                                               #Adds one action per WAN link telling the executor to apply its config.
-                "target-type": "wan-link",
                 "name": wan_link.get("name"),
                 "parameters": copy.deepcopy(wan_link),
-                "nat-check-required": nat_check_required,
-            })
+                "nat-check-required": nat_check_required,   })
 
         lan_links = sdwan_root.get("interfaces", {}).get("lan", {}).get("lan-link", [])          #Reads LAN links from config.
         for lan_link in lan_links:
@@ -343,10 +281,8 @@ class Agent:
 
             interface_actions.append({                                                           #Adds one action per LAN link telling the executor to apply its config.
                 "action": "apply-lan-link-config",
-                "target-type": "lan-link",
                 "name": lan_link.get("name"),
-                "parameters": lan_params,
-            })
+                "parameters": lan_params,    })
 
         tunnels = sdwan_root.get("overlay", {}).get("tunnel", [])                               #Reads tunnel list.
         for tunnel in tunnels:
@@ -365,14 +301,12 @@ class Agent:
 
                     self._store_tunnel_keys_in_datastore(
                         tunnel_name,
-                        public_key
-                    )
+                        public_key  )
 
             tunnel_params.update(self.generated_tunnel_keys.get(tunnel_name, {}))
 
             interface_actions.append({                                                        #Adds one action per tunne, telling the executor to apply its config.
                 "action": "apply-tunnel-config",
-                "target-type": "tunnel",
                 "name": tunnel_name,
                 "parameters": tunnel_params,
             })
@@ -387,7 +321,6 @@ class Agent:
         for rule in firewall_rules:
             firewall_actions.append({                                                       #Adds one action per firewall rule.
                 "action": "apply-firewall-rule",               
-                "target-type": "firewall-rule",
                 "name": rule.get("id"),
                 "parameters": copy.deepcopy(rule),
             })
@@ -429,7 +362,6 @@ class Agent:
                 },
                 "parameters": copy.deepcopy(traffic_class),                                #full copied config
             })
-
         return classifier_actions
 
     # =====================================================================================
@@ -437,17 +369,16 @@ class Agent:
     # =====================================================================================
 
     def _make_steering_decisions(self, current_config, wan_link_states, tunnel_states):
+        decisions = []                                                                                    #Creates an empty list for steering decisions.
 
-        decisions = []                                                       #Creates an empty list for steering decisions.
+        sdwan_root = current_config                                                                       #Stores config in a shorter variable name
+        steering_policies = sdwan_root.get("policy", {}).get("steering", [])                              #Reads steering policies from config.
 
-        sdwan_root = current_config                                          #Stores config in a shorter variable name
-        steering_policies = sdwan_root.get("policy", {}).get("steering", []) #Reads steering policies from config.
+        wan_state_map = self._index_states_by_name(wan_link_states)                                       #Converts state lists into dictionaries for fast lookup by name
+        tunnel_state_map = self._index_states_by_name(tunnel_states)                                      #Converts state lists into dictionaries for fast lookup by name
 
-        wan_state_map = self._index_states_by_name(wan_link_states)          #Converts state lists into dictionaries for fast lookup by name
-        tunnel_state_map = self._index_states_by_name(tunnel_states)         #Converts state lists into dictionaries for fast lookup by name
-
-        for policy in steering_policies:                                     #Loops through each steering policy.
-            traffic_class = policy.get("class")                              #Reads traffic class associated with this policy. 
+        for policy in steering_policies:                                                                  #Loops through each steering policy.
+            traffic_class = policy.get("class")                                                           #Reads traffic class associated with this policy. 
             if not traffic_class:
                 continue                                                                                 #Skip if missing
 
@@ -470,7 +401,6 @@ class Agent:
                         "loss-percent": state.get("loss-percent"),
                         "available-bandwidth-kbps": state.get("available-bandwidth-kbps"),
                     })
-
             now_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())                                   #Creates current UTC timestamp in ISO-like format.
 
             if steering_mode == "failover":                                                               #Enter failover logic.
@@ -505,9 +435,7 @@ class Agent:
                             "latency-ms": selected_state.get("latency-ms"),
                             "jitter-ms": selected_state.get("jitter-ms"),
                             "loss-percent": selected_state.get("loss-percent"),
-                            "available-bandwidth-kbps": selected_state.get("available-bandwidth-kbps"),
-                        }
-                    }
+                            "available-bandwidth-kbps": selected_state.get("available-bandwidth-kbps"), }  }
                 else:                                                                                      #If no candidate is eligible, creates a no-path decision.
                     decision = {
                         "action": "set-active-path",
@@ -525,16 +453,13 @@ class Agent:
                         },
                         "candidate-summary": {
                             "eligible": [],
-                            "rejected": rejected,
-                        },
-                    }
+                            "rejected": rejected, }, }
 
                 decisions.append(decision)
 
             elif steering_mode == "load-balance":                                                           #Enter load-balance logic
                 if eligible:                                                                                #If some candidates satisfy SLO:                       
-                    eligible_sorted = sorted(eligible, key=lambda x: self._candidate_score(x[2]))           #Sort candidates using the score function.
-                    eligible_names = [item[1] for item in eligible_sorted]                                  #Extract only the candidate names in sorted order
+                    eligible_names = [item[1] for item in eligible]
 
                     decision = {                                                                            #Creates load-balance decision listing all selected paths
                         "action": "set-load-balance-policy",
@@ -552,9 +477,7 @@ class Agent:
                         },
                         "candidate-summary": {
                             "eligible": eligible_names,
-                            "rejected": rejected,
-                        },
-                    }
+                            "rejected": rejected,   }, }
                 else:                                                                            #If none are eligible, create a no-path load-balance decision.
                     decision = {
                         "action": "set-load-balance-policy",
@@ -572,64 +495,56 @@ class Agent:
                         },
                         "candidate-summary": {
                             "eligible": [],
-                            "rejected": rejected,
-                        },
-                    }
-
+                            "rejected": rejected,  },  }
                 decisions.append(decision)
-
         return decisions                                                                                #returns all steering decisions.
 
     # =====================================================================================
     # Execution
     # =====================================================================================
 
-    def _execute_decisions(self, decisions):                                #function to pass decisions/actions to the executor module (steering_manager.py)
-    
+    def _execute_decisions(self, decisions):                                                           #function to pass decisions/actions to the executor module (steering_manager.py)
         results = []
 
-        for decision in decisions:                                          #Loops through every action/decision
-            result = self.steering_manager.execute_decision(decision)       #Calls the executor module for that action.
-            results.append(result)                                          #Stores returned result
+        for decision in decisions:                                                                    #Loops through every action/decision
+            result = self.steering_manager.execute_decision(decision)                                 #Calls the executor module for that action.
+            results.append(result)                                                                    #Stores returned result
 
         return results
 
-    def _apply_monitoring_updates_if_needed(self, current_config, changed): #function to notify the monitoring manager when config changes.
-        if not changed:                                                     #If config did not change, no monitoring update is needed.
+    def _apply_monitoring_updates_if_needed(self, current_config, changed):                          #function to notify the monitoring manager when config changes.
+        if not changed:                                                                              #If config did not change, no monitoring update is needed.
             return []
 
-        sdwan_root = current_config                                         #Stores config in shorter variable.
+        sdwan_root = current_config                                                                  #Stores config in shorter variable.
 
-        wan_links = sdwan_root.get("interfaces", {}).get("underlay", {}).get("wan-link", []) #Reads configured WAN links and tunnels.
+        wan_links = sdwan_root.get("interfaces", {}).get("underlay", {}).get("wan-link", [])         #Reads configured WAN links and tunnels.
         tunnels = sdwan_root.get("overlay", {}).get("tunnel", [])
 
-        instructions = {                                                    #Creates one instruction dictionary for monitoring manager
+        instructions = {                                                                             #Creates one instruction dictionary for monitoring manager
             "action": "apply-monitoring-config",
             "wan-links": [],
-            "tunnels": [],
-        }
+            "tunnels": [], }
 
         for wan_link in wan_links:
-            instructions["wan-links"].append({                             #Adds WAN-link info that monitoring manager may need.
+            instructions["wan-links"].append({                                                      #Adds WAN-link info that monitoring manager may need.
                 "name": wan_link.get("name"),
                 "interface-name": wan_link.get("interface-name"),
                 "admin-enabled": wan_link.get("admin-enabled"),
                 "role": wan_link.get("role"),
                 "address-mode": wan_link.get("address-mode"),
                 "static-address": wan_link.get("static-address"),
-                "static-gateway": wan_link.get("static-gateway"),
-            })
+                "static-gateway": wan_link.get("static-gateway"), })
 
         for tunnel in tunnels:
-            instructions["tunnels"].append({                              #Adds tunnel info that monitoring manager may need.
+            instructions["tunnels"].append({                                                        #Adds tunnel info that monitoring manager may need.
                 "name": tunnel.get("name"),
                 "bind-wan-link": tunnel.get("bind-wan-link"),
                 "admin-enabled": tunnel.get("admin-enabled"),
                 "local-address": tunnel.get("local-address"),
                 "local-port": tunnel.get("local-port"),
                 "peer-address": tunnel.get("peer-address"),
-                "peer-port": tunnel.get("peer-port"),
-            })
+                "peer-port": tunnel.get("peer-port"),  })
 
         return self.monitoring_manager.apply_configuration(instructions)
 
@@ -654,6 +569,7 @@ class Agent:
 
         all_actions = interface_config_apply_actions + firewall_config_apply_actions + classifier_actions + steering_decisions    #Combines all actions and decisions into one list.
         execution_results = self._execute_decisions(all_actions)                                                                  #Sends all of them to the executor module
+        nat_store_results = self.steering_manager.update_nat_status_in_datastore()
 
         monitoring_results = self._apply_monitoring_updates_if_needed(current_config, changed)                                    #Updates monitoring if config changed
 
@@ -664,18 +580,17 @@ class Agent:
                 "selected-path": decision.get("selected-path"),
                 "decision-status": decision.get("decision-status"),
                 "reason": decision.get("reason"),
-                "last-change": decision.get("last-change")
-            })
+                "last-change": decision.get("last-change")    })
 
-        output_file = self.state_writer.write_state(                                                       #Write state
+        output_file = self.state_writer.write_state(                                                                             #Write state
             wan_link_states=wan_link_states,
             tunnel_states=tunnel_states,
             steering_state=steering_state
         )
-
         result = {                                                                                        #Build final result object
             "config_changed": changed,
             "wan_link_states": wan_link_states,
+            "nat_sync_results": nat_sync_results,
             "tunnel_states": tunnel_states,
             "interface_config_apply_actions": interface_config_apply_actions,
             "firewall_config_apply_actions": firewall_config_apply_actions,
