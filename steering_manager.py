@@ -4,7 +4,7 @@
 import copy
 import json
 import logging
-import requests                                                                               #HTTP library used to send RESTCONF requests to the forwarder container.
+import requests                                                                                #HTTP library used to send RESTCONF requests to the forwarder container.
 
 logging.basicConfig(level=logging.INFO)
 
@@ -56,7 +56,7 @@ class SteeringManager:
                 action=action,
                 reason=str(e),
             )
-    def get_nat_state(self):                                                                 #poll NAT status from forwarder
+    def get_nat_state_from_forwarder(self):                                                                 #poll NAT status from forwarder
         url = f"{self.base_url}/restconf/data/forwarder:nat-state"
         response = requests.get(
             url,
@@ -65,6 +65,30 @@ class SteeringManager:
         )
         response.raise_for_status()
         return response.json()
+
+    def store_nat_status_in_datastore(self, wan_name, nat_type):
+        if not wan_name or not nat_type:
+            return False
+
+        url = f"http://127.0.0.1:8383/restconf/data/sdwan-cpe:sdwan/interfaces/underlay/wan-link={wan_name}"
+
+        headers = {
+            "Content-Type": "application/yang-data+json",
+            "Accept": "application/yang-data+json",
+        }
+        payload = {
+            "sdwan-cpe:wan-link": {
+                "name": wan_name,
+                "nat-type": nat_type } }
+        
+        response = requests.patch(
+            url,
+            headers=headers,
+            data=json.dumps(payload),
+            auth=("admin", "admin"),
+            timeout=self.timeout,  )
+        response.raise_for_status()
+        return True
     
     # ============================================================
     # Action handlers
@@ -237,7 +261,7 @@ class SteeringManager:
         payload = {
             "steering": {
                 "class": traffic_class,
-                "eligible-paths": eligible_names,
+                "eligible-paths": eligible_paths,
                 "selected-path-type": action.get("selected-path-type"),
                 "decision-status": action.get("decision-status"),
                 "reason": action.get("reason"),
