@@ -482,7 +482,7 @@ class Agent:
                     decision = {
                         "action": "set-load-balance-policy",
                         "traffic-class": traffic_class,
-                        "selected-path": [],
+                        "eligible-paths": [],
                         "selected-path-type": policy.get("load-balance-link-type"),
                         "decision-status": "no-path",
                         "reason": "no load-balance candidate satisfies SLO or candidates are down",
@@ -569,7 +569,8 @@ class Agent:
 
         all_actions = interface_config_apply_actions + firewall_config_apply_actions + classifier_actions + steering_decisions    #Combines all actions and decisions into one list.
         execution_results = self._execute_decisions(all_actions)                                                                  #Sends all of them to the executor module
-        nat_store_results = self.steering_manager.update_nat_status_in_datastore()
+        nat_state = self.steering_manager.get_nat_state_from_forwarder()
+        written = self.steering_manager.store_nat_status_in_datastore(wan_name, nat_type)
 
         monitoring_results = self._apply_monitoring_updates_if_needed(current_config, changed)                                    #Updates monitoring if config changed
 
