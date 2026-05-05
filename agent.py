@@ -570,18 +570,18 @@ class Agent:
         all_actions = interface_config_apply_actions + firewall_config_apply_actions + classifier_actions + steering_decisions    #Combines all actions and decisions into one list.
         execution_results = self._execute_decisions(all_actions)                                                                  #Sends all of them to the executor module
 
-        nat_state = self.steering_manager.get_nat_state_from_forwarder()                                                          #call steering manager to get NAT state
+        #nat_state = self.steering_manager.get_nat_state_from_forwarder()   #REMOVE COMMENT                                       #call steering manager to get NAT state
         nat_store_results = []
         nat_entries = nat_state.get("forwarder:nat-state", {}).get("wan-link", [])                                                #take one (wan_name, nat_type) pair from that returned data
-            for entry in nat_entries:
-                wan_name = entry.get("name")
-                nat_type = entry.get("nat-type")
+        for entry in nat_entries:
+            wan_name = entry.get("name")
+            nat_type = entry.get("nat-type")
             
-                written = self.steering_manager.store_nat_status_in_datastore(wan_name, nat_type)                                #call steering manager again to store (wan_name, nat_type) pair
-                nat_store_results.append({
-                    "wan-link": wan_name,
-                    "nat-type": nat_type,
-                    "written": written,  })
+            #written = self.steering_manager.store_nat_status_in_datastore(wan_name, nat_type)     #REMOVE COMMENT               #call steering manager again to store (wan_name, nat_type) pair
+            nat_store_results.append({
+                "wan-link": wan_name,
+                "nat-type": nat_type,
+                "written": written,  })
 
         monitoring_results = self._apply_monitoring_updates_if_needed(current_config, changed)                                    #Updates monitoring if config changed
 
