@@ -571,17 +571,17 @@ class Agent:
         execution_results = self._execute_decisions(all_actions)                                                                  #Sends all of them to the executor module
 
         #nat_state = self.steering_manager.get_nat_state_from_forwarder()   #REMOVE COMMENT                                       #call steering manager to get NAT state
-        nat_store_results = []
-        nat_entries = nat_state.get("forwarder:nat-state", {}).get("wan-link", [])                                                #take one (wan_name, nat_type) pair from that returned data
-        for entry in nat_entries:
-            wan_name = entry.get("name")
-            nat_type = entry.get("nat-type")
+        #nat_store_results = []
+        #nat_entries = nat_state.get("forwarder:nat-state", {}).get("wan-link", [])                                                #take one (wan_name, nat_type) pair from that returned data
+        #for entry in nat_entries:
+            #wan_name = entry.get("name")
+            #nat_type = entry.get("nat-type")
             
             #written = self.steering_manager.store_nat_status_in_datastore(wan_name, nat_type)     #REMOVE COMMENT               #call steering manager again to store (wan_name, nat_type) pair
-            nat_store_results.append({
-                "wan-link": wan_name,
-                "nat-type": nat_type,
-                "written": written,  })
+            #nat_store_results.append({
+                #"wan-link": wan_name,
+                #"nat-type": nat_type,
+                #"written": written,  })
 
         monitoring_results = self._apply_monitoring_updates_if_needed(current_config, changed)                                    #Updates monitoring if config changed
 
@@ -602,7 +602,7 @@ class Agent:
         result = {                                                                                        #Build final result object
             "config_changed": changed,
             "wan_link_states": wan_link_states,
-            "nat_store_results": nat_store_results,
+            #"nat_store_results": nat_store_results,                                                     #REMOVE COMMENT
             "tunnel_states": tunnel_states,
             "interface_config_apply_actions": interface_config_apply_actions,
             "firewall_config_apply_actions": firewall_config_apply_actions,
