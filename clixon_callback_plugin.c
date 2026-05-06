@@ -1,17 +1,17 @@
-#include <stdio.h>
+#include <stdio.h>                                                          //for FILE, fopen(), fgets(), and fclose()
 #include <stdlib.h>
-#include <string.h>
-#include <dirent.h>
+#include <string.h>                                                         //strchr(), strstr(), and snprintf()
+#include <dirent.h>                                                         //opendir(), readdir(), and closedir().
 #include <limits.h>
 
-#include <cligen/cligen.h>
-#include <clixon/clixon.h>
+#include <cligen/cligen.h>                                                  //for Cligen definitions like cvec, cbuf, and cg_var.
+#include <clixon/clixon.h>                                                  //for Clixon plugin API definitions.clixon_handle, cxobj, clixon_plugin_api, and clixon_xml_parse_string().
 
 #define SDWAN_NS "urn:example:sdwan-cpe"
 #define KEY_DIR  "/var/lib/clixon/local-public-keys"
 
 static int
-read_first_line(const char *path, char *buf, size_t buflen)
+read_file(const char *path, char *buf, size_t buflen)
 {
     FILE *fp;
     char *nl;
@@ -26,41 +26,33 @@ read_first_line(const char *path, char *buf, size_t buflen)
     }
 
     fclose(fp);
-
     nl = strchr(buf, '\n');
     if (nl)
         *nl = '\0';
-
     return 0;
 }
 
 static int
-sdwan_cpe_statedata(clixon_handle h,
-                    cvec *nsc,
-                    char *xpath,
-                    cxobj *xconfig)
+//Defines the Clixon backend state callback.
+sdwan_cpe_statedata(clixon_handle h,                                                  //h        = Clixon handle                                  
+                    cvec *nsc,                                                        //nsc      = namespace context
+                    char *xpath,                                                      //xpath    = requested XPath filter
+                    cxobj *xconfig)                                                   //xconfig  = XML tree where plugin adds state data
 {
-    DIR *dir;
-    struct dirent *entry;
-    char filepath[PATH_MAX];
-    char tunnel_name[256];
-    char public_key[512];
-    char xmlbuf[2048];
-    char *dot;
+    DIR *dir;                                                                         //a directory pointer.
+    struct dirent *entry;                                                             //Declares a directory entry pointer.Each entry represents one file inside the directory.
+    char filepath[PATH_MAX];                                                          //Creates a buffer to store the full file path.
+    char tunnel_name[64];                                                             //Creates a buffer to store the tunnel name.
+    char public_key[128];                                                             //Creates a buffer to store the public key read from the file.
+    char xmlbuf[2048];                                                                //Creates a buffer to store the XML string that will be returned to Clixon.
+    char *dot;                                                                        //Declares a pointer used to find .pub in the filename.
 
     dir = opendir(KEY_DIR);
     if (dir == NULL) {
-        /*
-         * No key directory yet. This is not fatal.
-         * Just return no operational key state.
-         */
         return 0;
     }
 
     while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_name[0] == '.')
-            continue;
-
         snprintf(tunnel_name, sizeof(tunnel_name), "%s", entry->d_name);
 
         dot = strstr(tunnel_name, ".pub");
@@ -71,20 +63,15 @@ sdwan_cpe_statedata(clixon_handle h,
 
         snprintf(filepath, sizeof(filepath), "%s/%s", KEY_DIR, entry->d_name);
 
-        if (read_first_line(filepath, public_key, sizeof(public_key)) < 0)
+        if (read_file(filepath, public_key, sizeof(public_key)) < 0)                                   //Reads the public key from the file. If reading fails, skip this file and continue with the next one.
             continue;
 
-        /*
-         * Return full path down to the config false leaf.
-         * The list key <name> is included so Clixon can attach the
-         * state leaf to the correct tunnel list entry.
-         */
-        snprintf(xmlbuf, sizeof(xmlbuf),
-                 "<sdwan xmlns=\"%s\">"
-                   "<overlay>"
+        snprintf(xmlbuf, sizeof(xmlbuf),                                                               //Starts building an XML string into xmlbuf
+                 "<sdwan xmlns=\"%s\">"                                                                //Starts the top-level XML node.
+                   "<overlay>" 
                      "<tunnel>"
                        "<name>%s</name>"
-                       "<local-public-key>%s</local-public-key>"
+                       "<local-public-key>%s</local-public-key>"                                      //the operational leaf
                      "</tunnel>"
                    "</overlay>"
                  "</sdwan>",
@@ -92,8 +79,8 @@ sdwan_cpe_statedata(clixon_handle h,
                  tunnel_name,
                  public_key);
 
-        if (clixon_xml_parse_string(xmlbuf, YB_NONE, 0, &xconfig, 0) < 0) {
-            closedir(dir);
+        if (clixon_xml_parse_string(xmlbuf, YB_NONE, 0, &xconfig, 0) < 0) {                          //Passes the XML string to Clixon.Clixon parses this XML and adds it into the operational-state reply.If parsing fails, the function enters the error block.
+            closedir(dir);                                                                           //closedir(dir);
             return -1;
         }
     }
@@ -103,7 +90,7 @@ sdwan_cpe_statedata(clixon_handle h,
 }
 
 static clixon_plugin_api api = {
-    "sdwan-cpe-state",
+    "callback_plugin",
     NULL,                   /* init */
     NULL,                   /* start */
     NULL,                   /* exit */
