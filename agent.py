@@ -7,6 +7,7 @@ import json                                                                     
 import logging                                                                     #to print info and error logs.
 import time
 import requests
+import os
 
 from config_reader import ConfigReader
 #from metric_reader import MetricReader                  #REMOVE COMMENT 
@@ -69,31 +70,25 @@ class Agent:
             logging.exception("Failed to derive WireGuard public key: %s", e)
             return None
 
-    def _store_tunnel_keys_in_datastore(self, tunnel_name, public_key):                       #Store generated tunnel keys in YANG datastore through RESTCONF
-        if not tunnel_name or not public_key:                                                 #If any required value is missing, return False
-            return False
+def _store_tunnel_keys_in_datastore(self, tunnel_name, public_key):                           # Store local-public-key in a local runtime file.
+    if not tunnel_name or not public_key:
+        return False
 
-        url = f"http://127.0.0.1:8383/restconf/data/sdwan-cpe:sdwan/overlay/tunnel={tunnel_name}"
+    state_dir = "/var/lib/clixon/local-public-keys"                                           # directory where public-key files will be stored
+    state_file = f"{state_dir}/{tunnel_name}.pub"                                             # builds the filename for each tunnel
 
-        headers = {
-            "Content-Type": "application/yang-data+json",                                     #JSON in YANG format is being sent and expected
-            "Accept": "application/yang-data+json"
-        }
-        payload = {                                                                           #JSON body to patch into the datastore.
-            "sdwan-cpe:tunnel": {
-                "name": tunnel_name,
-                "local-public-key": public_key }}
-        try:
-            response = requests.patch(                                                       #Sends an HTTP PATCH request to update the datastore
-                url,                                                                         #target RESTCONF endpoint
-                headers=headers,                                                             #content type and accept type
-                data=json.dumps(payload),)                                                   #converts Python dictionary to JSON string
-            
-            response.raise_for_status()                                                      #Raises an exception if the server returned an HTTP error like 400 or 500
-            return True
-        except Exception as e:
-            logging.exception("Failed to store tunnel keys in datastore for %s: %s", tunnel_name, e)
-            return False
+    try:
+        os.makedirs(state_dir, exist_ok=True)                                                  # creates the directory /var/lib/clixon/local-public-keys if it does not already exist
+        with open(state_file, "w") as f:
+            f.write(public_key)
+
+        logging.info(
+            "Stored local-public-key for tunnel %s in runtime state file %s", tunnel_name, state_file)
+        return True
+
+    except Exception as e:
+        logging.exception("Failed to store local-public-key runtime file for %s: %s", tunnel_name,e)
+        return False
             
     def _candidate_satisfies_slo(self, candidate_state, policy):
         if not candidate_state:                                                                     #If there is no state object, candidate is invalid.
@@ -295,8 +290,8 @@ class Agent:
 
                 if private_key and public_key:
                     self.generated_tunnel_keys[tunnel_name] = {
-                        "local-private-key": private_key,
-                        "local-public-key": public_key,
+                        "private-key": private_key,
+                        "public-key": public_key,
                     }
 
                     self._store_tunnel_keys_in_datastore(
