@@ -82,8 +82,7 @@ class Agent:
             with open(state_file, "w") as f:
                 f.write(public_key)
     
-            logging.info(
-                "Stored local-public-key for tunnel %s in runtime state file %s", tunnel_name, state_file)
+            logging.info("Stored local-public-key for tunnel %s in runtime state file %s", tunnel_name, state_file)
             return True
     
         except Exception as e:
