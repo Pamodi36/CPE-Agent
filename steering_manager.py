@@ -71,7 +71,7 @@ class SteeringManager:
             return False
 
         state_dir = "/var/lib/clixon/wan-link-nat-types"                                           # directory where nat-type files will be stored
-        state_file = f"{state_dir}/{wan_name}.pub"                                                 # builds the filename for each wan-link
+        state_file = f"{state_dir}/{wan_name}.nat"                                                 # builds the filename for each wan-link
 
         try:
             os.makedirs(state_dir, exist_ok=True)                                                  # creates the directory /var/lib/clixon/wan-link-nat-types if it does not already exist
