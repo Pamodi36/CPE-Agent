@@ -7,7 +7,7 @@
 #include <cligen/cligen.h>                                                  //for Cligen definitions like cvec, cbuf, and cg_var.
 #include <clixon/clixon.h>                                                  //for Clixon plugin API definitions.clixon_handle, cxobj, clixon_plugin_api, and clixon_xml_parse_string().
 
-#define SDWAN_NS "urn:example:sdwan-cpe"
+#define SDWAN_NS "urn:sdwan:cpe"
 #define KEY_DIR  "/var/lib/clixon/local-public-keys"
 
 static int
