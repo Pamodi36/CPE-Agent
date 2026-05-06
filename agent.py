@@ -70,25 +70,25 @@ class Agent:
             logging.exception("Failed to derive WireGuard public key: %s", e)
             return None
 
-def _store_tunnel_keys_in_datastore(self, tunnel_name, public_key):                           # Store local-public-key in a local runtime file.
-    if not tunnel_name or not public_key:
-        return False
-
-    state_dir = "/var/lib/clixon/local-public-keys"                                           # directory where public-key files will be stored
-    state_file = f"{state_dir}/{tunnel_name}.pub"                                             # builds the filename for each tunnel
-
-    try:
-        os.makedirs(state_dir, exist_ok=True)                                                  # creates the directory /var/lib/clixon/local-public-keys if it does not already exist
-        with open(state_file, "w") as f:
-            f.write(public_key)
-
-        logging.info(
-            "Stored local-public-key for tunnel %s in runtime state file %s", tunnel_name, state_file)
-        return True
-
-    except Exception as e:
-        logging.exception("Failed to store local-public-key runtime file for %s: %s", tunnel_name,e)
-        return False
+    def _store_tunnel_keys_in_datastore(self, tunnel_name, public_key):                           # Store local-public-key in a local runtime file.
+        if not tunnel_name or not public_key:
+            return False
+    
+        state_dir = "/var/lib/clixon/local-public-keys"                                           # directory where public-key files will be stored
+        state_file = f"{state_dir}/{tunnel_name}.pub"                                             # builds the filename for each tunnel
+    
+        try:
+            os.makedirs(state_dir, exist_ok=True)                                                  # creates the directory /var/lib/clixon/local-public-keys if it does not already exist
+            with open(state_file, "w") as f:
+                f.write(public_key)
+    
+            logging.info(
+                "Stored local-public-key for tunnel %s in runtime state file %s", tunnel_name, state_file)
+            return True
+    
+        except Exception as e:
+            logging.exception("Failed to store local-public-key runtime file for %s: %s", tunnel_name,e)
+            return False
             
     def _candidate_satisfies_slo(self, candidate_state, policy):
         if not candidate_state:                                                                     #If there is no state object, candidate is invalid.
