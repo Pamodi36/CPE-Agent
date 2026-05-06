@@ -70,25 +70,19 @@ class SteeringManager:
         if not wan_name or not nat_type:
             return False
 
-        url = f"http://127.0.0.1:8383/restconf/data/sdwan-cpe:sdwan/interfaces/underlay/wan-link={wan_name}"
+        state_dir = "/var/lib/clixon/wan-link-nat-types"                                           # directory where nat-type files will be stored
+        state_file = f"{state_dir}/{wan_name}.pub"                                                 # builds the filename for each wan-link
 
-        headers = {
-            "Content-Type": "application/yang-data+json",
-            "Accept": "application/yang-data+json",
-        }
-        payload = {
-            "sdwan-cpe:wan-link": {
-                "name": wan_name,
-                "nat-type": nat_type } }
-        
-        response = requests.patch(
-            url,
-            headers=headers,
-            data=json.dumps(payload),
-            auth=("admin", "admin"),
-            timeout=self.timeout,  )
-        response.raise_for_status()
-        return True
+        try:
+            os.makedirs(state_dir, exist_ok=True)                                                  # creates the directory /var/lib/clixon/wan-link-nat-types if it does not already exist
+            with open(state_file, "w") as f:
+                f.write(nat_type)
+            logging.info("Stored nat-type for wan link %s in runtime state file %s", wan_name, state_file)
+            return True
+    
+        except Exception as e:
+            logging.exception("Failed to store nat-type runtime file for %s: %s", wan_name,e)
+            return False
     
     # ============================================================
     # Action handlers
@@ -172,10 +166,8 @@ class SteeringManager:
                 "peer-public-key": params.get("peer-public-key"),
                 "allowed-prefix": params.get("allowed-prefix", []),
                 "keepalive-seconds": params.get("keepalive-seconds"),
-            },  
-            
+            },      
         }
-
         return self._patch(url, payload, action)
 
     def _apply_firewall_rule(self, action):                                                              # apply-firewall rule
@@ -277,25 +269,19 @@ class SteeringManager:
     # PATCH request sender to forwarder
     # ============================================================
     """def _patch(self, url: str, payload, action):                                           #common helper that sends RESTCONF PATCH requests to forwarder
-        logging.info("PATCH %s", url)                                                      #Prints the target URL and the payload for debugging
+        logging.info("PATCH %s", url)                                                         #Prints the target URL and the payload for debugging
         logging.info("Payload: %s", json.dumps(payload, indent=2))
 
-        response = requests.patch(                                                         #Sends the actual HTTP PATCH request to the forwarder.
+        response = requests.patch(                                                            #Sends the actual HTTP PATCH request to the forwarder.
             url,
             headers=self.headers,
             data=json.dumps(payload),
             timeout=self.timeout,
         )
-
         if 200 <= response.status_code < 300:
-            return {
-                "status": "success",
-                "http-status": response.status_code,
-            }    
-        return {
-            "status": "error",
-            "http-status": response.status_code,
-        }"""
+            return {"status": "success", "http-status": response.status_code, }    
+            
+        return {"status": "error", "http-status": response.status_code, }"""
    
    #==========================================================================================================
    #Test code without forwarder module. need to remove this once forwarder is present
