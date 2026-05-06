@@ -40,8 +40,8 @@ add_tunnel_public_keys(cxobj *xconfig)                                       // 
     DIR *dir;                                                               // directory pointer
     struct dirent *entry;                                                   // each entry represents one file inside the directory
     char filepath[PATH_MAX];                                                // full path to the .pub file
-    char tunnel_name[256];                                                  // tunnel name extracted from filename
-    char public_key[128];                                                   // public key read from file
+    char tunnel_name[32];                                                  // tunnel name extracted from filename
+    char public_key[64];                                                   // public key read from file
     char xmlbuf[2048];                                                      // XML string returned to Clixon
     char *dot;                                                              // pointer used to find ".pub" in filename
 
@@ -92,8 +92,8 @@ add_wan_nat_types(cxobj *xconfig)                                            // 
     DIR *dir;                                                               // directory pointer
     struct dirent *entry;                                                   // each entry represents one file inside the directory
     char filepath[PATH_MAX];                                                // full path to the .nat file
-    char wan_name[256];                                                     // WAN-link name extracted from filename
-    char nat_type[64];                                                      // NAT type read from file
+    char wan_name[32];                                                     // WAN-link name extracted from filename
+    char nat_type[32];                                                      // NAT type read from file
     char xmlbuf[2048];                                                      // XML string returned to Clixon
     char *dot;                                                              // pointer used to find ".nat" in filename
 
