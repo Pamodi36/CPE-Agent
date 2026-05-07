@@ -101,7 +101,35 @@ module sdwan-cpe {
 
     /*
      * ==================================================================================
-     * Interface roles
+     * System Details
+     * ==================================================================================
+     */
+    container system {
+      description
+        "Local CPE system identity and management information.";
+    
+      leaf cpe-id {
+        type string;
+        mandatory true;
+        description
+          "Unique identifier of this CPE.";
+      }
+    
+      leaf hostname {
+        type string;
+        description
+          "Hostname of this CPE.";
+      }
+    
+      leaf management-ip {
+        type inet:ipv4-address;
+        description
+          "Management IP address of this CPE.";
+      }
+    }
+    /*
+     * ==================================================================================
+     * CPE Interface roles
      * ==================================================================================
      */
     container interfaces {
