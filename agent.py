@@ -2,12 +2,15 @@
 # coding: utf-8
 
 import copy                                                                        #to make copied versions of dictionaries/lists so the original config objects are not modified by mistake
-import subprocess                                                                  #to derive a WireGuard public key from a private key
 import json                                                                        #converting Python objects into JSON strings
 import logging                                                                     #to print info and error logs.
 import time
 import requests
 import os
+import base64
+
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from cryptography.hazmat.primitives import serialization
 
 from config_reader import ConfigReader
 #from metric_reader import MetricReader                  #REMOVE COMMENT 
@@ -41,53 +44,58 @@ class Agent:
                 indexed[name] = item                                                         #If the state has a name, store that item in the dictionary using the name as key
         return indexed
 
-    def _generate_wireguard_private_key(self):                                               #Generate a random WireGuard private key using 'wg genkey'
-        try:
-            result = subprocess.run(
-                ["wg", "genkey"],
-                stdout=subprocess.PIPE,                                                      #captures normal output
-                stderr=subprocess.PIPE,                                                      #captures error output
-                check=True, )                                                                #raises an exception if the command fails
-            return result.stdout.decode("utf-8").strip()                                     #Converts the output into text and returns the private key.
-       
-        except Exception as e:                                                               #If anything fails, execution comes here
-            logging.exception("Failed to generate WireGuard private key: %s", e)
-            return None
-
-    def _derive_wireguard_public_key(self, private_key):                                     #Derive WireGuard public key from private key using 'wg pubkey'
-        if not private_key:                                                                  #If no private key given, stop immediately and return None
-            return None
-        try:
-            result = subprocess.run(
-                ["wg", "pubkey"],
-                input=(private_key + "\n").encode("utf-8"),                                  #sends the private key into the command through standard input
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=True, )
-            return result.stdout.decode("utf-8").strip()                                      #Converts the output into text and returns the public key.
-            
-        except Exception as e:
-            logging.exception("Failed to derive WireGuard public key: %s", e)
-            return None
-
-    def _store_tunnel_keys_in_datastore(self, tunnel_name, public_key):                           # Store local-public-key in a local runtime file.
-        if not tunnel_name or not public_key:
-            return False
+    def _get_or_create_tunnel_keys(self, cpe_id, tunnel_name):
+        private_dir = "/var/lib/sdwan-cpe/keys"
+        public_dir = "/var/lib/clixon/local-public-keys"
     
-        state_dir = "/var/lib/clixon/local-public-keys"                                           # directory where public-key files will be stored
-        state_file = f"{state_dir}/{tunnel_name}.pub"                                             # builds the filename for each tunnel
+        private_path = f"{private_dir}/{tunnel_name}.private"
+        public_path = f"{public_dir}/{tunnel_name}.pub"
     
         try:
-            os.makedirs(state_dir, exist_ok=True)                                                  # creates the directory /var/lib/clixon/local-public-keys if it does not already exist
-            with open(state_file, "w") as f:
+            if os.path.exists(private_path) and os.path.exists(public_path):
+                with open(private_path, "r") as f:
+                    private_key = f.read().strip()
+    
+                with open(public_path, "r") as f:
+                    public_key = f.read().strip()
+    
+                return private_key, public_key
+    
+            private_key_obj = X25519PrivateKey.generate()
+            public_key_obj = private_key_obj.public_key()
+    
+            private_key_bytes = private_key_obj.private_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PrivateFormat.Raw,
+                encryption_algorithm=serialization.NoEncryption()
+            )
+    
+            public_key_bytes = public_key_obj.public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw
+            )
+    
+            private_key = base64.b64encode(private_key_bytes).decode("ascii")
+            public_key = base64.b64encode(public_key_bytes).decode("ascii")
+    
+            os.makedirs(private_dir, exist_ok=True)
+            os.makedirs(public_dir, exist_ok=True)
+    
+            with open(private_path, "w") as f:
+                f.write(private_key)
+            os.chmod(private_path, 0o600)
+    
+            with open(public_path, "w") as f:
                 f.write(public_key)
+            os.chmod(public_path, 0o644)
     
-            logging.info("Stored local-public-key for tunnel %s in runtime state file %s", tunnel_name, state_file)
-            return True
+            logging.info("Created persistent WireGuard keys for CPE %s tunnel %s", cpe_id, tunnel_name)
+    
+            return private_key, public_key
     
         except Exception as e:
-            logging.exception("Failed to store local-public-key runtime file for %s: %s", tunnel_name,e)
-            return False
+            logging.exception("Failed to get or create WireGuard keys for tunnel %s: %s", tunnel_name, e)
+            return None, None
             
     def _candidate_satisfies_slo(self, candidate_state, policy):
         if not candidate_state:                                                                     #If there is no state object, candidate is invalid.
@@ -279,13 +287,13 @@ class Agent:
                 "parameters": lan_params,    })
 
         tunnels = sdwan_root.get("overlay", {}).get("tunnel", [])                               #Reads tunnel list.
+        
         for tunnel in tunnels:
             tunnel_params = copy.deepcopy(tunnel)
             tunnel_name = tunnel.get("name")
 
             if tunnel_name not in self.generated_tunnel_keys:
-                private_key = self._generate_wireguard_private_key()
-                public_key = self._derive_wireguard_public_key(private_key)
+                private_key, public_key = self._get_or_create_tunnel_keys(tunnel_name)
 
                 if private_key and public_key:
                     self.generated_tunnel_keys[tunnel_name] = {
