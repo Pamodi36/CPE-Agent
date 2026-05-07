@@ -44,7 +44,7 @@ class Agent:
                 indexed[name] = item                                                         #If the state has a name, store that item in the dictionary using the name as key
         return indexed
 
-    def _get_or_create_tunnel_keys(self, tunnel_name):
+    def _generate_wireguard_tunnel_keys(self, tunnel_name):                                 # generate and save WireGuard tunnel keys uding curve25519
         private_dir = "/var/lib/sdwan-cpe/keys"
         public_dir = "/var/lib/clixon/local-public-keys"
     
@@ -293,7 +293,7 @@ class Agent:
             tunnel_name = tunnel.get("name")
 
             if tunnel_name not in self.generated_tunnel_keys:
-                private_key, public_key = self._get_or_create_tunnel_keys(self, tunnel_name)
+                private_key, public_key = self._generate_wireguard_tunnel_keys(tunnel_name)
 
                 if private_key and public_key:
                     self.generated_tunnel_keys[tunnel_name] = {
