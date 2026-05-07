@@ -151,19 +151,16 @@ class SteeringManager:
 
         url = f"{self.base_url}/restconf/data/forwarder:tunnels/tunnel={name}"                    # Builds the Tunnel RESTCONF URL.
         payload = {
-            "tunnel": {
-                "name": name,
-                "bind-wan-link": params.get("bind-wan-link"),
-                "admin-enabled": params.get("admin-enabled"),
-                "local-address": params.get("local-address"),
-                "local-port": params.get("local-port"),
-                "local-public-key": params.get("public-key"),
-                "peer-address": params.get("peer-address"),
-                "peer-port": params.get("peer-port"),
-                "peer-public-key": params.get("peer-public-key"),
-                "allowed-prefix": params.get("allowed-prefix", []),
-                "keepalive-seconds": params.get("keepalive-seconds"),
-            },      
+            "bind-wan-link": params.get("bind-wan-link"),
+            "admin-enabled": params.get("admin-enabled"),
+            "local-address": params.get("local-address"),
+            "local-port": params.get("local-port"),
+            "local-private-key": params.get("private-key"),
+            "peer-address": params.get("peer-address"),
+            "peer-port": params.get("peer-port"),
+            "peer-public-key": params.get("peer-public-key"),
+            "allowed-prefix": params.get("allowed-prefix", []),
+            "keepalive-seconds": params.get("keepalive-seconds"),   
         }
         return self._patch(url, payload, action)
 
