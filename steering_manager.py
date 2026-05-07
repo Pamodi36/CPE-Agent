@@ -101,12 +101,9 @@ class SteeringManager:
         
         payload = {                                                                           # Builds the JSON payload to send.
             "nat-check-required": action.get("nat-check-required"),
-            "wan-link": {
-                "name": name,
-                "interface-name": params.get("interface-name"),
-                "role": params.get("role"),
-                "admin-enabled": params.get("admin-enabled"),
-                "address-mode": address_mode,            },
+            "interface-name": params.get("interface-name"),                                   #NEED TO DICSUSS WHETHER THIS INFO GIVEN BY CONTROLLER OR FORWARDER
+            "admin-enabled": params.get("admin-enabled"),
+            "address-mode": address_mode,     
         }                                
         if address_mode == "static":
             payload["wan-link"]["static-address"] = params.get("static-address")
