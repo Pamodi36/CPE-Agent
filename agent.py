@@ -44,7 +44,7 @@ class Agent:
                 indexed[name] = item                                                         #If the state has a name, store that item in the dictionary using the name as key
         return indexed
 
-    def _get_or_create_tunnel_keys(self, cpe_id, tunnel_name):
+    def _get_or_create_tunnel_keys(self, tunnel_name):
         private_dir = "/var/lib/sdwan-cpe/keys"
         public_dir = "/var/lib/clixon/local-public-keys"
     
@@ -89,7 +89,7 @@ class Agent:
                 f.write(public_key)
             os.chmod(public_path, 0o644)
     
-            logging.info("Created persistent WireGuard keys for CPE %s tunnel %s", cpe_id, tunnel_name)
+            logging.info("Created WireGuard keys for tunnel %s", tunnel_name)
     
             return private_key, public_key
     
@@ -293,18 +293,13 @@ class Agent:
             tunnel_name = tunnel.get("name")
 
             if tunnel_name not in self.generated_tunnel_keys:
-                private_key, public_key = self._get_or_create_tunnel_keys(tunnel_name)
+                private_key, public_key = self._get_or_create_tunnel_keys(self, tunnel_name)
 
                 if private_key and public_key:
                     self.generated_tunnel_keys[tunnel_name] = {
                         "private-key": private_key,
                         "public-key": public_key,
                     }
-
-                    self._store_tunnel_keys_in_datastore(
-                        tunnel_name,
-                        public_key  )
-
             tunnel_params.update(self.generated_tunnel_keys.get(tunnel_name, {}))
 
             interface_actions.append({                                                        #Adds one action per tunne, telling the executor to apply its config.
