@@ -682,7 +682,7 @@ if __name__ == "__main__":
         def get_tunnel_metric(self, name):
             if name == "wg01":
                 return {
-                    "latency_ms": 75,
+                    "latency_ms": 105,
                     "jitter_ms": 2,
                     "loss_percent": 0,
                     "available_bandwidth_kbps": 50000,
