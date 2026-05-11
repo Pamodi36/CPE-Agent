@@ -66,7 +66,7 @@ module sdwan-cpe {
       pattern '[a-zA-Z0-9+/]{43}=';
       length "44";
     }
-    description "A WireGuard public or private key (Base64 encoded, 44 chars).";
+    description "A WireGuard publi key (Base64 encoded, 44 chars).";
   }
 
   typedef percentage {
