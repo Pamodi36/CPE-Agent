@@ -108,23 +108,29 @@ module sdwan-cpe {
       description
         "Local CPE system identity and management information.";
     
-      leaf cpe-id {
-        type string;
-        mandatory true;
+      list system-info {
+        key "cpe-id";
         description
-          "Unique identifier of this CPE.";
-      }
-    
-      leaf hostname {
-        type string;
-        description
-          "Hostname of this CPE.";
-      }
-    
-      leaf management-ip {
-        type inet:ipv4-address;
-        description
-          "Management IP address of this CPE.";
+          "System information of this CPE";
+      
+        leaf cpe-id {
+          type string;
+          mandatory true:
+          description
+            "Unique identifier of this CPE";
+        }
+      
+        leaf hostname {
+          type string;
+          description
+            "Hostname of this CPE.";
+        }
+      
+        leaf management-ip {
+          type inet:ipv4-address;
+          description
+            "Management IP address of this CPE.";
+        }
       }
     }
     /*
