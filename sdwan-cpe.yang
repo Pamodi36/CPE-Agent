@@ -111,7 +111,7 @@ module sdwan-cpe {
       list system-info {
         key "cpe-id";
         description
-          "System information of this CPE";
+          "Identity information of this CPE";
       
         leaf cpe-id {
           type string;
