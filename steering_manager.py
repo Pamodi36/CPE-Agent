@@ -99,21 +99,22 @@ class SteeringManager:
 
         address_mode = params.get("address-mode")
         
-        payload = {                                                                           # Builds the JSON payload to send.
-            "nat-check-required": action.get("nat-check-required"),
-            "interface-name": params.get("interface-name"),                                   #NEED TO DICSUSS WHETHER THIS INFO GIVEN BY CONTROLLER OR FORWARDER
-            "admin-enabled": params.get("admin-enabled"),
-            "address-mode": address_mode,     
-        }                                
+        payload = {
+            "wan-link": {
+                "nat-check-required": action.get("nat-check-required"),
+                "interface-name": params.get("interface-name"),
+                "admin-enabled": params.get("admin-enabled"),
+                "address-mode": address_mode,
+            }
+        }      
         if address_mode == "static":
             payload["wan-link"]["static-address"] = params.get("static-address")
             payload["wan-link"]["static-gateway"] = params.get("static-gateway")
-    
+        
         elif address_mode == "dhcp":
             payload["wan-link"]["dhcp-enabled"] = True
     
-        return self._patch(url, payload, action)
-        
+        return self._patch(url, payload, action)     
 
     def _apply_lan_link_config(self, action):                                                    # LAN link configuration
         name = action.get("name")
