@@ -115,7 +115,7 @@ module sdwan-cpe {
       
         leaf cpe-id {
           type string;
-          mandatory true:
+          mandatory true;
           description
             "Unique identifier of this CPE";
         }
