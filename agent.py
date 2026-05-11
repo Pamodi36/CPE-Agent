@@ -646,7 +646,6 @@ if __name__ == "__main__":
                     "source": "fake",
                     "reason": "fake metric for UPL1"
                 }
-
             if name == "UPL2":
                 return {
                     "latency_ms": 40,
@@ -658,7 +657,17 @@ if __name__ == "__main__":
                     "source": "fake",
                     "reason": "fake metric for UPL2"
                 }
-
+            if name == "UPL3":
+                return {
+                    "latency_ms": 40,
+                    "jitter_ms": 5,
+                    "loss_percent": 1,
+                    "available_bandwidth_kbps": 50000,
+                    "timestamp": "test",
+                    "stale": False,
+                    "source": "fake",
+                    "reason": "fake metric for UPL3"
+                }
             return {
                 "latency_ms": None,
                 "jitter_ms": None,
@@ -671,7 +680,7 @@ if __name__ == "__main__":
             }
 
         def get_tunnel_metric(self, name):
-            if name == "tun1":
+            if name == "wg01":
                 return {
                     "latency_ms": 75,
                     "jitter_ms": 2,
@@ -680,10 +689,10 @@ if __name__ == "__main__":
                     "timestamp": "test",
                     "stale": False,
                     "source": "fake",
-                    "reason": "fake metric for tun1"
+                    "reason": "fake metric for wg01"
                 }
 
-            if name == "tun2":
+            if name == "wg02":
                 return {
                     "latency_ms": 30,
                     "jitter_ms": 3,
@@ -692,9 +701,19 @@ if __name__ == "__main__":
                     "timestamp": "test",
                     "stale": False,
                     "source": "fake",
-                    "reason": "fake metric for tun2"
+                    "reason": "fake metric for wg02"
                 }
-
+            if name == "wg03":
+                return {
+                    "latency_ms": 30,
+                    "jitter_ms": 3,
+                    "loss_percent": 0,
+                    "available_bandwidth_kbps": 70000,
+                    "timestamp": "test",
+                    "stale": False,
+                    "source": "fake",
+                    "reason": "fake metric for wg03"
+                }
             return {
                 "latency_ms": None,
                 "jitter_ms": None,
