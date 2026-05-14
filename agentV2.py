@@ -1,34 +1,40 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-import copy
-import json
-import logging
+import copy                                                                        #to make copied versions of dictionaries/lists so the original config objects are not modified by mistake
+import json                                                                        #converting Python objects into JSON strings
+import logging                                                                     #to print info and error logs.
 import time
+import requests
 import os
 import base64
-import requests
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET                                                  #to parse XML transaction messages sent by Clixon callback plugin
 
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer                          #simple internal HTTP server for receiving Clixon callback messages
 
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 
 from config_reader import ConfigReader
+#from metric_reader import MetricReader                  #REMOVE COMMENT
+#from state_writer import StateWriter                    #REMOVE COMMENT
 from steering_manager import SteeringManager
+#from monitoring_manager import MonitoringManager        #REMOVE COMMENT
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO)                                            # to show info messages and errors
 
 
 class Agent:
-    def __init__(self):
+    def __init__(self):                                                            #Creates object for each python module and stores it inside the agent
         self.config_reader = ConfigReader()
+        #self.metric_reader = MetricReader()              #REMOVE COMMENT
+        #self.state_writer = StateWriter()                #REMOVE COMMENT
 
         # SteeringManager is now mainly for runtime steering decisions.
         # Configuration changes from Clixon callback go directly from agent.py to forwarder.
         self.steering_manager = SteeringManager()
 
+        #self.monitoring_manager = MonitoringManager()    #REMOVE COMMENT
         self.generated_tunnel_keys = {}
 
         self.forwarder_base_url = os.environ.get(
@@ -36,28 +42,27 @@ class Agent:
             "http://127.0.0.1:9090"
         )
 
+        # Since forwarder is not ready yet, keep dry-run enabled by default.
+        # Later set FORWARDER_DRY_RUN=0 to send real API calls.
+        self.forwarder_dry_run = os.environ.get("FORWARDER_DRY_RUN", "1") == "1"
+
     # =====================================================================================
     # Basic helpers
     # =====================================================================================
 
-    def _allocate_fwmark(self, class_name, index):
+    def _allocate_fwmark(self, class_name, index):                                  #called by "_make_steering_decisions()"
+        # Agent-assigned fwmark for a traffic class.
         return 1000 + index
 
-    def _index_states_by_name(self, states):
+    def _index_states_by_name(self, states):                                        #called by "_make_steering_decisions()"
         indexed = {}
 
-        for item in states:
-            name = item.get("name")
+        for item in states:                                                         #Loops through each state item in the list
+            name = item.get("name")                                                 #Reads the name field from the state dictionary
             if name:
-                indexed[name] = item
+                indexed[name] = item                                                #If the state has a name, store that item in the dictionary using the name as key
 
         return indexed
-
-    def _bool_from_xml(self, value, default=True):
-        if value is None:
-            return default
-
-        return str(value).lower() in ["true", "1", "yes"]
 
     def _local_name(self, tag):
         if tag is None:
@@ -75,6 +80,12 @@ class Agent:
         children = list(element)
         return children[0] if children else None
 
+    def _bool_value(self, value, default=True):
+        if value is None:
+            return default
+
+        return str(value).lower() in ["true", "1", "yes"]
+
     def _xml_leaf_text(self, parent, leaf_name):
         if parent is None:
             return None
@@ -85,23 +96,46 @@ class Agent:
 
         return None
 
-    def _xml_leaf_list(self, parent, leaf_name):
-        values = []
+    def _xml_to_dict(self, element):
+        """
+        Convert XML parent object from Clixon into a Python dictionary.
 
-        if parent is None:
-            return values
+        This avoids hardcoding every YANG leaf one by one.
+        Repeated leaf-list/list entries become Python lists.
+        """
 
-        for child in list(parent):
-            if self._local_name(child.tag) == leaf_name and child.text is not None:
-                values.append(child.text)
+        if element is None:
+            return {}
 
-        return values
+        result = {}
 
-    # =====================================================================================
-    # WireGuard key helper
-    # =====================================================================================
+        for child in list(element):
+            name = self._local_name(child.tag)
 
-    def _generate_wireguard_tunnel_keys(self, tunnel_name):
+            if len(list(child)) == 0:
+                value = child.text
+            else:
+                value = self._xml_to_dict(child)
+
+            if name in result:
+                if not isinstance(result[name], list):
+                    result[name] = [result[name]]
+                result[name].append(value)
+            else:
+                result[name] = value
+
+        return result
+
+    def _as_list(self, value):
+        if value is None:
+            return []
+
+        if isinstance(value, list):
+            return value
+
+        return [value]
+
+    def _generate_wireguard_tunnel_keys(self, tunnel_name):                         # generate and save WireGuard tunnel keys uding curve25519
         private_dir = "/var/lib/sdwan-cpe/keys"
         public_dir = "/var/lib/clixon/local-public-keys"
 
@@ -151,12 +185,23 @@ class Agent:
             return private_key, public_key
 
         except Exception as e:
-            logging.exception("Failed to create WireGuard keys for tunnel %s: %s", tunnel_name, e)
+            logging.exception("Failed to get or create WireGuard keys for tunnel %s: %s", tunnel_name, e)
             return None, None
 
     # =====================================================================================
     # Forwarder API helpers
     # =====================================================================================
+
+    def _operation(self, method, path, payload=None):
+        operation = {
+            "method": method,
+            "path": path
+        }
+
+        if payload is not None:
+            operation["payload"] = payload
+
+        return operation
 
     def _send_forwarder_transaction(self, operations, validate_only):
         payload = {
@@ -164,10 +209,17 @@ class Agent:
             "operations": operations
         }
 
-        url = f"{self.forwarder_base_url}/api/v1/transactions"
+        print("\n===== FORWARDER TRANSACTION GENERATED =====")
+        print(json.dumps(payload, indent=2))
 
-        logging.info("Sending transaction to forwarder: validate_only=%s", validate_only)
-        logging.info(json.dumps(payload, indent=2))
+        if self.forwarder_dry_run:
+            return {
+                "status": "dry-run",
+                "message": "Forwarder is not called because FORWARDER_DRY_RUN=1",
+                "payload": payload
+            }
+
+        url = f"{self.forwarder_base_url}/api/v1/transactions"
 
         response = requests.post(url, json=payload, timeout=10)
         response.raise_for_status()
@@ -177,43 +229,31 @@ class Agent:
 
         return {"status": "ok"}
 
-    def _operation(self, method, path, payload=None):
-        op = {
-            "method": method,
-            "path": path
-        }
-
-        if payload is not None:
-            op["payload"] = payload
-
-        return op
-
     # =====================================================================================
-    # Build forwarder operations directly from Clixon changed parent object
+    # Build forwarder operations using changed node name + parent object dictionary
     # =====================================================================================
 
-    def _build_wan_link_operations(self, wan_xml, changed_leaf, delete=False):
-        name = self._xml_leaf_text(wan_xml, "name")
-        interface_name = self._xml_leaf_text(wan_xml, "interface-name")
-        admin_enabled = self._bool_from_xml(self._xml_leaf_text(wan_xml, "admin-enabled"), True)
-        address_mode = self._xml_leaf_text(wan_xml, "address-mode")
-        static_address = self._xml_leaf_text(wan_xml, "static-address")
+    def _build_wan_link_operations(self, parent_dict, changed_leaf, delete=False):
+        name = parent_dict.get("name")
+        interface_name = parent_dict.get("interface-name")
+        admin_enabled = self._bool_value(parent_dict.get("admin-enabled"), True)
+        address_mode = parent_dict.get("address-mode")
+        static_address = parent_dict.get("static-address")
 
         if not interface_name:
-            logging.warning("WAN link %s has no interface-name; no operation built", name)
+            logging.warning("WAN link %s has no interface-name", name)
             return []
 
-        operations = []
-
         if delete:
-            operations.append(
+            return [
                 self._operation(
                     "PUT",
                     f"/api/v1/interfaces/{interface_name}/state",
                     {"state": "down"}
                 )
-            )
-            return operations
+            ]
+
+        operations = []
 
         if changed_leaf in ["admin-enabled", "interface-name", "name"]:
             operations.append(
@@ -225,10 +265,10 @@ class Agent:
             )
 
         if changed_leaf in ["static-address", "static-gateway", "address-mode", "interface-name"]:
+            addresses = []
+
             if address_mode == "static" and static_address:
-                addresses = [static_address]
-            else:
-                addresses = []
+                addresses.append(static_address)
 
             operations.append(
                 self._operation(
@@ -240,21 +280,19 @@ class Agent:
 
         return operations
 
-    def _build_lan_link_operations(self, lan_xml, changed_leaf, delete=False):
-        name = self._xml_leaf_text(lan_xml, "name")
-        bridge_name = self._xml_leaf_text(lan_xml, "bridge-name") or name
-        ipv4_prefix = self._xml_leaf_text(lan_xml, "ipv4-prefix")
-        member_interfaces = self._xml_leaf_list(lan_xml, "member-interface")
-        admin_enabled = self._bool_from_xml(self._xml_leaf_text(lan_xml, "admin-enabled"), True)
+    def _build_lan_link_operations(self, parent_dict, changed_leaf, delete=False):
+        name = parent_dict.get("name")
+        bridge_name = parent_dict.get("bridge-name") or name
+        ipv4_prefix = parent_dict.get("ipv4-prefix")
+        member_interfaces = self._as_list(parent_dict.get("member-interface"))
+        admin_enabled = self._bool_value(parent_dict.get("admin-enabled"), True)
 
         if not bridge_name:
-            logging.warning("LAN link has no name/bridge-name; no operation built")
+            logging.warning("LAN link has no name or bridge-name")
             return []
 
-        operations = []
-
         if delete:
-            operations.append(
+            return [
                 self._operation(
                     "PUT",
                     f"/api/v1/bridges/{bridge_name}",
@@ -264,10 +302,11 @@ class Agent:
                         "admin_state": "down"
                     }
                 )
-            )
-            return operations
+            ]
 
-        if changed_leaf in ["bridge-name", "member-interface", "admin-enabled", "name"]:
+        operations = []
+
+        if changed_leaf in ["name", "bridge-name", "member-interface", "admin-enabled"]:
             operations.append(
                 self._operation(
                     "PUT",
@@ -280,36 +319,33 @@ class Agent:
                 )
             )
 
-        if changed_leaf in ["ipv4-prefix", "bridge-name", "name"]:
-            addresses = [ipv4_prefix] if ipv4_prefix else []
-
+        if changed_leaf in ["name", "bridge-name", "ipv4-prefix"]:
             operations.append(
                 self._operation(
                     "PUT",
                     f"/api/v1/interfaces/{bridge_name}/addresses",
-                    {"addresses": addresses}
+                    {
+                        "addresses": [ipv4_prefix] if ipv4_prefix else []
+                    }
                 )
             )
 
         return operations
 
-    def _build_tunnel_operations(self, tunnel_xml, changed_leaf, delete=False):
-        name = self._xml_leaf_text(tunnel_xml, "name")
+    def _build_tunnel_operations(self, parent_dict, changed_leaf, delete=False):
+        name = parent_dict.get("name")
 
         if not name:
-            logging.warning("Tunnel has no name; no operation built")
+            logging.warning("Tunnel has no name")
             return []
 
-        operations = []
-
         if delete:
-            operations.append(
+            return [
                 self._operation(
                     "DELETE",
                     f"/api/v1/tunnels/wireguard/{name}"
                 )
-            )
-            return operations
+            ]
 
         if name not in self.generated_tunnel_keys:
             private_key, public_key = self._generate_wireguard_tunnel_keys(name)
@@ -320,39 +356,52 @@ class Agent:
                     "public-key": public_key
                 }
 
-        keys = self.generated_tunnel_keys.get(name, {})
+        operations = []
 
-        local_port = self._xml_leaf_text(tunnel_xml, "local-port")
-        local_address = self._xml_leaf_text(tunnel_xml, "local-address")
+        local_port = parent_dict.get("local-port")
+        local_address = parent_dict.get("local-address")
 
-        tunnel_payload = {
-            "private_key_ref": f"secret://wireguard/{name}/private-key",
-            "listen_port": int(local_port) if local_port else 51820,
-            "local_addresses": [local_address] if local_address else [],
-            "description": f"WireGuard tunnel {name}"
-        }
-
-        operations.append(
-            self._operation(
-                "PUT",
-                f"/api/v1/tunnels/wireguard/{name}",
-                tunnel_payload
+        if changed_leaf in [
+            "name",
+            "local-port",
+            "local-address",
+            "admin-enabled",
+            "bind-wan-link"
+        ]:
+            operations.append(
+                self._operation(
+                    "PUT",
+                    f"/api/v1/tunnels/wireguard/{name}",
+                    {
+                        "private_key_ref": f"secret://wireguard/{name}/private-key",
+                        "listen_port": int(local_port) if local_port else 51820,
+                        "local_addresses": [local_address] if local_address else [],
+                        "description": f"WireGuard tunnel {name}"
+                    }
+                )
             )
-        )
 
         peer_id = (
-            self._xml_leaf_text(tunnel_xml, "peer-cpe-id")
-            or self._xml_leaf_text(tunnel_xml, "peer-id")
+            parent_dict.get("peer-cpe-id")
+            or parent_dict.get("peer-id")
             or f"{name}-peer"
         )
 
-        peer_address = self._xml_leaf_text(tunnel_xml, "peer-address")
-        peer_port = self._xml_leaf_text(tunnel_xml, "peer-port")
-        peer_public_key = self._xml_leaf_text(tunnel_xml, "peer-public-key")
-        allowed_prefixes = self._xml_leaf_list(tunnel_xml, "allowed-prefix")
-        keepalive = self._xml_leaf_text(tunnel_xml, "keepalive-seconds")
+        peer_address = parent_dict.get("peer-address")
+        peer_port = parent_dict.get("peer-port")
+        peer_public_key = parent_dict.get("peer-public-key")
+        allowed_prefixes = self._as_list(parent_dict.get("allowed-prefix"))
+        keepalive = parent_dict.get("keepalive-seconds")
 
-        if peer_public_key or peer_address:
+        if changed_leaf in [
+            "peer-cpe-id",
+            "peer-id",
+            "peer-address",
+            "peer-port",
+            "peer-public-key",
+            "allowed-prefix",
+            "keepalive-seconds"
+        ]:
             peer_payload = {
                 "public_key": peer_public_key,
                 "allowed_ips": allowed_prefixes,
@@ -373,27 +422,30 @@ class Agent:
 
         return operations
 
-    def _build_firewall_rule_operations(self, rule_xml, changed_leaf, delete=False):
-        rule_id = self._xml_leaf_text(rule_xml, "id")
+    def _build_firewall_rule_operations(self, parent_dict, changed_leaf, delete=False):
+        rule_id = parent_dict.get("id")
 
         if not rule_id:
-            logging.warning("Firewall rule has no id; no operation built")
+            logging.warning("Firewall rule has no id")
             return []
 
         policy_id = f"firewall-rule-{rule_id}"
 
         if delete:
             return [
-                self._operation("DELETE", f"/api/v1/flow-policies/{policy_id}")
+                self._operation(
+                    "DELETE",
+                    f"/api/v1/flow-policies/{policy_id}"
+                )
             ]
 
-        priority = self._xml_leaf_text(rule_xml, "priority")
-        action = self._xml_leaf_text(rule_xml, "action")
-        protocol = self._xml_leaf_text(rule_xml, "l4-protocol")
-        src_prefix = self._xml_leaf_text(rule_xml, "src-prefix")
-        dst_prefix = self._xml_leaf_text(rule_xml, "dst-prefix")
-        src_port = self._xml_leaf_text(rule_xml, "src-port")
-        dst_port = self._xml_leaf_text(rule_xml, "dst-port")
+        priority = parent_dict.get("priority")
+        action = parent_dict.get("action")
+        protocol = parent_dict.get("l4-protocol")
+        src_prefix = parent_dict.get("src-prefix")
+        dst_prefix = parent_dict.get("dst-prefix")
+        src_port = parent_dict.get("src-port")
+        dst_port = parent_dict.get("dst-port")
 
         match = {}
 
@@ -418,12 +470,14 @@ class Agent:
                 "end": int(dst_port)
             }
 
+        forwarder_action = {
+            "type": "allow" if action == "allow" else "deny"
+        }
+
         payload = {
             "priority": int(priority) if priority else 1000,
             "match": match,
-            "action": {
-                "type": "allow" if action == "allow" else "deny"
-            },
+            "action": forwarder_action,
             "description": f"Firewall rule {rule_id}"
         }
 
@@ -435,25 +489,32 @@ class Agent:
             )
         ]
 
-    def _build_forwarder_operations_from_parent(self, parent_xml, changed_leaf, delete=False):
+    def _build_operations_from_parent_xml(self, parent_xml, changed_leaf, delete=False):
         if parent_xml is None:
             return []
 
         object_type = self._local_name(parent_xml.tag)
+        parent_dict = self._xml_to_dict(parent_xml)
+
+        print("\n===== CLIXON CHANGED OBJECT RECEIVED =====")
+        print("object_type:", object_type)
+        print("changed_leaf:", changed_leaf)
+        print(json.dumps(parent_dict, indent=2))
 
         if object_type == "wan-link":
-            return self._build_wan_link_operations(parent_xml, changed_leaf, delete)
+            return self._build_wan_link_operations(parent_dict, changed_leaf, delete)
 
         if object_type == "lan-link":
-            return self._build_lan_link_operations(parent_xml, changed_leaf, delete)
+            return self._build_lan_link_operations(parent_dict, changed_leaf, delete)
 
         if object_type == "tunnel":
-            return self._build_tunnel_operations(parent_xml, changed_leaf, delete)
+            return self._build_tunnel_operations(parent_dict, changed_leaf, delete)
 
         if object_type == "rule":
-            return self._build_firewall_rule_operations(parent_xml, changed_leaf, delete)
+            return self._build_firewall_rule_operations(parent_dict, changed_leaf, delete)
 
-        logging.info("No direct forwarder mapping yet for object type: %s", object_type)
+        logging.info("No forwarder mapping yet for object type=%s, changed_leaf=%s",
+                     object_type, changed_leaf)
         return []
 
     # =====================================================================================
@@ -475,19 +536,17 @@ class Agent:
         if changed is not None:
             for change in changed.findall("change"):
                 new_node = change.find("new")
-
                 if new_node is None:
                     continue
 
-                node_name = new_node.findtext("node-name")
-
+                changed_leaf = new_node.findtext("node-name")
                 parent_data = new_node.find("parent-data")
                 parent_xml = self._first_child(parent_data)
 
                 operations.extend(
-                    self._build_forwarder_operations_from_parent(
+                    self._build_operations_from_parent_xml(
                         parent_xml,
-                        node_name,
+                        changed_leaf,
                         delete=False
                     )
                 )
@@ -495,14 +554,14 @@ class Agent:
         added = root.find("added")
         if added is not None:
             for node in added.findall("node"):
-                node_name = node.findtext("node-name")
+                changed_leaf = node.findtext("node-name")
                 parent_data = node.find("parent-data")
                 parent_xml = self._first_child(parent_data)
 
                 operations.extend(
-                    self._build_forwarder_operations_from_parent(
+                    self._build_operations_from_parent_xml(
                         parent_xml,
-                        node_name,
+                        changed_leaf,
                         delete=False
                     )
                 )
@@ -510,27 +569,27 @@ class Agent:
         deleted = root.find("deleted")
         if deleted is not None:
             for node in deleted.findall("node"):
-                node_name = node.findtext("node-name")
+                changed_leaf = node.findtext("node-name")
                 data = node.find("data")
                 deleted_xml = self._first_child(data)
 
                 operations.extend(
-                    self._build_forwarder_operations_from_parent(
+                    self._build_operations_from_parent_xml(
                         deleted_xml,
-                        node_name,
+                        changed_leaf,
                         delete=True
                     )
                 )
 
         if not operations:
-            logging.info("No forwarder operations built for this Clixon transaction")
             return {
                 "status": "ok",
                 "phase": phase,
+                "message": "No forwarder operation generated",
                 "operations": []
             }
 
-        result = self._send_forwarder_transaction(
+        forwarder_result = self._send_forwarder_transaction(
             operations=operations,
             validate_only=validate_only
         )
@@ -540,123 +599,120 @@ class Agent:
             "phase": phase,
             "validate_only": validate_only,
             "operations": operations,
-            "forwarder_result": result
+            "forwarder_result": forwarder_result
         }
 
     # =====================================================================================
-    # Runtime steering decision logic
+    # Runtime steering decisions
     # =====================================================================================
 
     def _candidate_satisfies_slo(self, candidate_state, policy):
-        if not candidate_state:
+        if not candidate_state:                                                                     #If there is no state object, candidate is invalid.
             return False
 
-        oper_status = candidate_state.get("oper-status")
-        if oper_status not in ["up", "degraded"]:
+        oper_status = candidate_state.get("oper-status")                                            #Reads the operational status.
+        if oper_status not in ["up", "degraded"]:                                                   #Only candidates with up or degraded are accepted. Anything else is rejected
             return False
 
-        max_latency = policy.get("max-latency-ms")
+        max_latency = policy.get("max-latency-ms")                                                  #Reads max allowed latency from policy.
         if max_latency is not None:
-            latency = candidate_state.get("latency-ms")
-            if latency is None or latency > max_latency:
+            latency = candidate_state.get("latency-ms")                                             #Reads measured latency from state
+            if latency is None or latency > max_latency:                                            #Reject if latency is missing or exceeds the threshold.
                 return False
 
-        max_jitter = policy.get("max-jitter-ms")
+        max_jitter = policy.get("max-jitter-ms")                                                    #Reads max allowed jitter from policy.
         if max_jitter is not None:
-            jitter = candidate_state.get("jitter-ms")
-            if jitter is None or jitter > max_jitter:
+            jitter = candidate_state.get("jitter-ms")                                               #Reads measured jitter from state
+            if jitter is None or jitter > max_jitter:                                               #Reject if jitter is missing or exceeds the threshold
                 return False
 
-        max_loss = policy.get("max-loss-percent")
+        max_loss = policy.get("max-loss-percent")                                                   #Reads max allowed packet loss from policy.
         if max_loss is not None:
-            loss = candidate_state.get("loss-percent")
-            if loss is None or loss > float(max_loss):
+            loss = candidate_state.get("loss-percent")                                              #Reads measured packet loss from state
+            if loss is None or loss > float(max_loss):                                              #Reject if packet loss is missing or exceeds the threshold
                 return False
 
-        min_bw = policy.get("min-bandwidth-kbps")
+        min_bw = policy.get("min-bandwidth-kbps")                                                   #Reads min allowed BW from policy.
         if min_bw is not None:
-            bw = candidate_state.get("available-bandwidth-kbps")
-            if bw is None or bw < min_bw:
+            bw = candidate_state.get("available-bandwidth-kbps")                                    #Reads available BW from state
+            if bw is None or bw < min_bw:                                                           #Reject if BW is missing or less than the threshold
                 return False
 
-        return True
+        return True                                                                                 #If all checks pass, candidate satisfies the SLO
 
-    def _extract_candidate_states(self, policy, wan_state_map, tunnel_state_map):
-        steering_mode = policy.get("steering-mode")
+    def _extract_candidate_states(self, policy, wan_state_map, tunnel_state_map):                    #Return candidate type and candidate state objects according to policy.
+        steering_mode = policy.get("steering-mode")                                                 #Reads steering mode from policy. Default is "failover"
         candidates = []
 
         if steering_mode == "failover":
-            failover_link_type = policy.get("failover-link-type")
+            failover_link_type = policy.get("failover-link-type")                                   #If mode is failover, read whether policy uses tunnels or WAN links.
 
             if failover_link_type == "tunnel":
                 ordered_names = []
-
                 primary = policy.get("primary-tunnel")
                 if primary:
-                    ordered_names.append(primary)
-
-                ordered_names.extend(policy.get("secondary-tunnel", []))
+                    ordered_names.append(primary)                                                   #If a primary tunnel exists, add it first
+                ordered_names.extend(policy.get("secondary-tunnel", []))                            #Then append all secondary tunnels.
 
                 for name in ordered_names:
                     state = tunnel_state_map.get(name)
                     if state:
-                        candidates.append(("tunnel", name, state))
+                        candidates.append(("tunnel", name, state))                                  #For each configured tunnel name, look up its state and add it as candidate.
 
             elif failover_link_type == "wan-link":
                 ordered_names = []
-
                 primary = policy.get("primary-wan-link")
                 if primary:
-                    ordered_names.append(primary)
-
-                ordered_names.extend(policy.get("secondary-wan-link", []))
+                    ordered_names.append(primary)                                                   #If a primary wan link exists, add it first
+                ordered_names.extend(policy.get("secondary-wan-link", []))                          #Then append all secondary wan links
 
                 for name in ordered_names:
                     state = wan_state_map.get(name)
                     if state:
-                        candidates.append(("wan-link", name, state))
+                        candidates.append(("wan-link", name, state))                                #For each configured wan link, look up its state and add it as candidate
 
         elif steering_mode == "load-balance":
-            lb_type = policy.get("load-balance-link-type")
+            lb_type = policy.get("load-balance-link-type")                                          #If mode is load-balance, read whether balancing uses tunnels or WAN links.
 
             if lb_type == "tunnel":
                 for name in policy.get("load-balance-tunnel", []):
                     state = tunnel_state_map.get(name)
                     if state:
-                        candidates.append(("tunnel", name, state))
+                        candidates.append(("tunnel", name, state))                                  #adds configured tunnels as load-balance candidates.
 
             elif lb_type == "wan-link":
                 for name in policy.get("load-balance-wan-link", []):
                     state = wan_state_map.get(name)
                     if state:
-                        candidates.append(("wan-link", name, state))
+                        candidates.append(("wan-link", name, state))                                #adds configured WAN links as load-balance candidates
 
-        return candidates
+        return candidates                                                                           #returns the final candidate list.
 
     def _make_steering_decisions(self, current_config, wan_link_states, tunnel_states):
-        decisions = []
+        decisions = []                                                                               #Creates an empty list for steering decisions.
 
-        steering_policies = current_config.get("policy", {}).get("steering", [])
+        sdwan_root = current_config                                                                  #Stores config in a shorter variable name
+        steering_policies = sdwan_root.get("policy", {}).get("steering", [])                         #Reads steering policies from config.
 
-        wan_state_map = self._index_states_by_name(wan_link_states)
-        tunnel_state_map = self._index_states_by_name(tunnel_states)
+        wan_state_map = self._index_states_by_name(wan_link_states)                                  #Converts state lists into dictionaries for fast lookup by name
+        tunnel_state_map = self._index_states_by_name(tunnel_states)                                 #Converts state lists into dictionaries for fast lookup by name
 
-        for policy in steering_policies:
-            traffic_class = policy.get("class")
+        for policy in steering_policies:                                                             #Loops through each steering policy.
+            traffic_class = policy.get("class")                                                      #Reads traffic class associated with this policy.
             if not traffic_class:
-                continue
+                continue                                                                             #Skip if missing
 
-            steering_mode = policy.get("steering-mode")
-            candidates = self._extract_candidate_states(policy, wan_state_map, tunnel_state_map)
+            steering_mode = policy.get("steering-mode")                                              #Reads steering mode
+            candidates = self._extract_candidate_states(policy, wan_state_map, tunnel_state_map)      #Builds the list of candidate paths according to this policy.
 
-            eligible = []
+            eligible = []                                                                            #Creates lists for accepted and rejected candidates
             rejected = []
 
-            for link_type, name, state in candidates:
+            for link_type, name, state in candidates:                                                #Loops through each candidate.
                 if self._candidate_satisfies_slo(state, policy):
-                    eligible.append((link_type, name, state))
+                    eligible.append((link_type, name, state))                                        #If candidate passes SLO checks, put it in eligible
                 else:
-                    rejected.append({
+                    rejected.append({                                                                #If candidate fails, add summary info into rejected
                         "name": name,
                         "link-type": link_type,
                         "oper-status": state.get("oper-status"),
@@ -666,11 +722,16 @@ class Agent:
                         "available-bandwidth-kbps": state.get("available-bandwidth-kbps"),
                     })
 
-            now_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            now_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())                              #Creates current UTC timestamp in ISO-like format.
 
-            if steering_mode == "failover":
-                if eligible:
-                    selected_link_type, selected_name, selected_state = eligible[0]
+            if steering_mode == "failover":                                                          #Enter failover logic.
+                if eligible:                                                                         #If at least one candidate satisfies the SLO
+                    selected_link_type, selected_name, selected_state = eligible[0]                  #Choose the first eligible candidate.
+
+                    if candidates and selected_name == candidates[0][1]:
+                        reason = "primary path satisfies SLO"
+                    else:
+                        reason = "primary path failed SLO; failed over to next eligible path"
 
                     decision = {
                         "action": "set-active-path",
@@ -678,78 +739,81 @@ class Agent:
                         "selected-path": selected_name,
                         "selected-path-type": selected_link_type,
                         "decision-status": "selected",
-                        "reason": "selected first candidate satisfying SLO",
+                        "reason": reason,
                         "last-change": now_ts,
                         "candidate-summary": {
                             "eligible": [item[1] for item in eligible],
-                            "rejected": rejected
-                        }
+                            "rejected": rejected,
+                        },
                     }
-                else:
+                else:                                                                                 #If no candidate is eligible, creates a no-path decision.
                     decision = {
                         "action": "set-active-path",
                         "traffic-class": traffic_class,
                         "selected-path": None,
                         "selected-path-type": policy.get("failover-link-type"),
                         "decision-status": "no-path",
-                        "reason": "no candidate satisfies SLO",
+                        "reason": "no candidate satisfies SLO or candidates are down",
                         "last-change": now_ts,
                         "candidate-summary": {
                             "eligible": [],
-                            "rejected": rejected
-                        }
+                            "rejected": rejected,
+                        },
                     }
 
                 decisions.append(decision)
 
-            elif steering_mode == "load-balance":
-                eligible_names = [item[1] for item in eligible]
+            elif steering_mode == "load-balance":                                                     #Enter load-balance logic
+                if eligible:                                                                          #If some candidates satisfy SLO:
+                    eligible_names = [item[1] for item in eligible]
 
-                decision = {
-                    "action": "set-load-balance-policy",
-                    "traffic-class": traffic_class,
-                    "eligible-paths": eligible_names,
-                    "selected-path-type": policy.get("load-balance-link-type"),
-                    "decision-status": "selected" if eligible_names else "no-path",
-                    "reason": "load-balance candidates selected" if eligible_names else "no candidate satisfies SLO",
-                    "last-change": now_ts,
-                    "candidate-summary": {
-                        "eligible": eligible_names,
-                        "rejected": rejected
+                    decision = {                                                                      #Creates load-balance decision listing all selected paths
+                        "action": "set-load-balance-policy",
+                        "traffic-class": traffic_class,
+                        "eligible-paths": eligible_names,
+                        "selected-path-type": policy.get("load-balance-link-type"),
+                        "decision-status": "selected",
+                        "reason": "Candidates satisfying SLO for Load-Balance",
+                        "last-change": now_ts,
+                        "candidate-summary": {
+                            "eligible": eligible_names,
+                            "rejected": rejected,
+                        },
                     }
-                }
+                else:                                                                                 #If none are eligible, create a no-path load-balance decision.
+                    decision = {
+                        "action": "set-load-balance-policy",
+                        "traffic-class": traffic_class,
+                        "eligible-paths": [],
+                        "selected-path-type": policy.get("load-balance-link-type"),
+                        "decision-status": "no-path",
+                        "reason": "no load-balance candidate satisfies SLO or candidates are down",
+                        "last-change": now_ts,
+                        "candidate-summary": {
+                            "eligible": [],
+                            "rejected": rejected,
+                        },
+                    }
 
                 decisions.append(decision)
 
-        return decisions
+        return decisions                                                                              #returns all steering decisions.
 
-    def _execute_runtime_steering_decisions(self, decisions):
-        results = []
-
-        for decision in decisions:
-            result = self.steering_manager.execute_decision(decision)
-            results.append(result)
-
-        return results
-
+    # =====================================================================================
+    # Main cycle
+    # =====================================================================================
     def run_once(self):
-        """
-        Runtime cycle only.
-
-        This is no longer used for configuration change detection.
-        Config changes are handled by Clixon callback -> handle_clixon_transaction().
-        """
-
         current_config = self.config_reader.get_intended_config()
+        sdwan_root = current_config
 
         if not hasattr(self, "metric_reader"):
-            logging.warning("metric_reader not configured; skipping runtime steering cycle")
+            logging.warning("metric_reader not configured")
             return {"status": "skipped", "reason": "metric_reader not configured"}
 
-        wan_links = current_config.get("interfaces", {}).get("underlay", {}).get("wan-link", [])
-        tunnels = current_config.get("overlay", {}).get("tunnel", [])
+        wan_links = sdwan_root.get("interfaces", {}).get("underlay", {}).get("wan-link", [])
+        tunnels = sdwan_root.get("overlay", {}).get("tunnel", [])
 
-        wan_link_states = []
+        wan_link_states = []                                                                          #Builds WAN operational states.
         for wan_link in wan_links:
             name = wan_link.get("name")
             metric = self.metric_reader.get_wan_link_metric(name)
@@ -763,7 +827,7 @@ class Agent:
                 "available-bandwidth-kbps": metric.get("available_bandwidth_kbps"),
             })
 
-        tunnel_states = []
+        tunnel_states = []                                                                            #Builds tunnel operational states.
         for tunnel in tunnels:
             name = tunnel.get("name")
             metric = self.metric_reader.get_tunnel_metric(name)
@@ -778,32 +842,32 @@ class Agent:
                 "available-bandwidth-kbps": metric.get("available_bandwidth_kbps"),
             })
 
-        steering_decisions = self._make_steering_decisions(
-            current_config,
-            wan_link_states,
-            tunnel_states
-        )
+        steering_decisions = self._make_steering_decisions(current_config, wan_link_states, tunnel_states)     #Makes steering decisions using current states and policies
 
-        execution_results = self._execute_runtime_steering_decisions(steering_decisions)
+        execution_results = []
+        for decision in steering_decisions:
+            execution_results.append(
+                self.steering_manager.execute_decision(decision)
+            )
 
-        result = {
+        result = {                                                                                    #Build final result object
             "wan_link_states": wan_link_states,
             "tunnel_states": tunnel_states,
             "decisions": steering_decisions,
-            "execution_results": execution_results
+            "execution_results": execution_results,
         }
 
-        logging.info("Runtime steering cycle completed")
-        print(json.dumps(result, indent=2))
+        logging.info("Agent runtime steering cycle completed")                                        #Builds a summary dictionary of everything done in this cycle.
+        print(json.dumps(result, indent=2))                                                           #Logs success message.
 
         return result
 
-    def run_forever(self, interval_sec=5):
+    def run_forever(self, interval_sec=5):                                                            # Repeat the full execution cycle continuously.
         while True:
             try:
                 self.run_once()
             except Exception as e:
-                logging.exception("Agent runtime loop failed: %s", e)
+                logging.exception("Agent loop failed: %s", e)
 
             time.sleep(interval_sec)
 
@@ -854,8 +918,113 @@ class ClixonCallbackHandler(BaseHTTPRequestHandler):
         return
 
 
+# =====================================================================================
+# Temporary fake metric reader for testing agent.py before real metric_reader.py is ready
+# =====================================================================================
+
+class FakeMetricReader:
+    def get_wan_link_metric(self, name):
+        if name == "UPL1":
+            return {
+                "latency_ms": 10,
+                "jitter_ms": 1,
+                "loss_percent": 0,
+                "available_bandwidth_kbps": 100000,
+                "timestamp": "test",
+                "stale": False,
+                "source": "fake",
+                "reason": "fake metric for UPL1"
+            }
+
+        if name == "UPL2":
+            return {
+                "latency_ms": 40,
+                "jitter_ms": 5,
+                "loss_percent": 1,
+                "available_bandwidth_kbps": 50000,
+                "timestamp": "test",
+                "stale": False,
+                "source": "fake",
+                "reason": "fake metric for UPL2"
+            }
+
+        if name == "UPL3":
+            return {
+                "latency_ms": 40,
+                "jitter_ms": 5,
+                "loss_percent": 1,
+                "available_bandwidth_kbps": 50000,
+                "timestamp": "test",
+                "stale": False,
+                "source": "fake",
+                "reason": "fake metric for UPL3"
+            }
+
+        return {
+            "latency_ms": None,
+            "jitter_ms": None,
+            "loss_percent": None,
+            "available_bandwidth_kbps": None,
+            "timestamp": "test",
+            "stale": True,
+            "source": "fake",
+            "reason": "unknown WAN link"
+        }
+
+    def get_tunnel_metric(self, name):
+        if name == "wg01":
+            return {
+                "latency_ms": 105,
+                "jitter_ms": 2,
+                "loss_percent": 0,
+                "available_bandwidth_kbps": 50000,
+                "timestamp": "test",
+                "stale": False,
+                "source": "fake",
+                "reason": "fake metric for wg01"
+            }
+
+        if name == "wg02":
+            return {
+                "latency_ms": 30,
+                "jitter_ms": 3,
+                "loss_percent": 0,
+                "available_bandwidth_kbps": 70000,
+                "timestamp": "test",
+                "stale": False,
+                "source": "fake",
+                "reason": "fake metric for wg02"
+            }
+
+        if name == "wg03":
+            return {
+                "latency_ms": 30,
+                "jitter_ms": 3,
+                "loss_percent": 0,
+                "available_bandwidth_kbps": 70000,
+                "timestamp": "test",
+                "stale": False,
+                "source": "fake",
+                "reason": "fake metric for wg03"
+            }
+
+        return {
+            "latency_ms": None,
+            "jitter_ms": None,
+            "loss_percent": None,
+            "available_bandwidth_kbps": None,
+            "timestamp": "test",
+            "stale": True,
+            "source": "fake",
+            "reason": "unknown tunnel"
+        }
+
+
 if __name__ == "__main__":
     agent = Agent()
 
-    # This starts the internal API used by the Clixon C callback plugin.
+    # Temporary fake metric reader for testing agent.py before real metric_reader.py is ready
+    agent.metric_reader = FakeMetricReader()
+
+    # Start internal API used by Clixon callback plugin.
     agent.run_clixon_callback_server()
