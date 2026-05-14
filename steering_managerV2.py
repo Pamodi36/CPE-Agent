@@ -26,9 +26,6 @@ class SteeringManager:
         action_type = action.get("action")                                                     #reads the "action" field from the incoming action dictionary from "agent.py"
 
         try:                                                                                   #check the action type and call the correct internal handler.
-
-            # Configuration actions are no longer handled by SteeringManager.
-            # They are handled directly by agent.py when Clixon callback sends config changes.
             if action_type in [
                 "apply-wan-link-config",
                 "apply-lan-link-config",
