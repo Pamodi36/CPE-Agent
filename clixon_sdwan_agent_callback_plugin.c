@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <curl/curl.h>
+#include <string.h>
+
+#include <cligen/cligen.h>
 
 #include <clixon/clixon.h>
 #include <clixon/clixon_backend.h>
