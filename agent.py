@@ -871,7 +871,7 @@ class Agent:
 
             time.sleep(interval_sec)
 
-    def run_clixon_callback_server(self, host="0.0.0.0", port=9101):
+    def run_clixon_callback_server(self, host="0.0.0.0", port=8080):
         ClixonCallbackHandler.agent = self
 
         server = HTTPServer((host, port), ClixonCallbackHandler)
