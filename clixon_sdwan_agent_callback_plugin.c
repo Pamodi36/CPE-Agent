@@ -11,8 +11,8 @@
 
 #define PLUGIN_NAME "sdwan-agent-callback-plugin"
 
-#define AGENT_VALIDATE_URL "http://127.0.0.1:9101/internal/clixon/validate-config-change"
-#define AGENT_COMMIT_URL   "http://127.0.0.1:9101/internal/clixon/commit-config-change"
+#define AGENT_VALIDATE_URL "http://127.0.0.1:8080/internal/clixon/validate-config-change"
+#define AGENT_COMMIT_URL   "http://127.0.0.1:8080/internal/clixon/commit-config-change"
 
 #define HTTP_TIMEOUT_SEC 10L
 
@@ -293,7 +293,11 @@ sdwan_trans_validate(clixon_handle h, transaction_data td)
 {
     (void)h;
 
-    return send_transaction_to_agent(AGENT_VALIDATE_URL, "validate", td);
+    if (send_transaction_to_agent(AGENT_VALIDATE_URL, "validate", td) < 0) {
+        clixon_err(OE_PLUGIN, 0, "SD-WAN agent validation failed or agent unreachable");
+        return -1;
+    }
+    return 0;
 }
 
 
@@ -308,7 +312,11 @@ sdwan_trans_commit(clixon_handle h, transaction_data td)
 {
     (void)h;
 
-    return send_transaction_to_agent(AGENT_COMMIT_URL, "commit", td);
+    if (send_transaction_to_agent(AGENT_COMMIT_URL, "commit", td) < 0) {
+        clixon_err(OE_PLUGIN, 0, "SD-WAN agent commit failed or agent unreachable");
+        return -1;
+    }
+    return 0;
 }
 
 
