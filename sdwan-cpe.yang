@@ -1,4 +1,4 @@
-    module sdwan-cpe {
+  module sdwan-cpe {
   yang-version 1.1;
   namespace "urn:sdwan:cpe";
   prefix scpe;
@@ -1005,3 +1005,4 @@
     }
   }
 }
+
