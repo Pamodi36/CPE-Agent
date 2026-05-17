@@ -48,7 +48,7 @@ class Agent:
         if tag is None:
             return ""
         if "}" in tag:
-            return tag.split("}", 1)[1]
+            return tag.split("}", 1)[1]                                              # splits the string variable tag at the first } and returns everything that comes after it
         return tag
 
     def _first_child(self, element):
@@ -60,9 +60,9 @@ class Agent:
     def _bool_value(self, value, default=True):
         if value is None:
             return default
-        return str(value).lower() in ["true", "1", "yes"]
+        return str(value).lower() in ["true", "1", "yes"]                            # This converts text into Python boolean.
 
-    def _xml_to_dict(self, element):                                                 #Convert XML parent object from Clixon into a Python dictionary to avoids hardcoding every YANG leaf one by one
+    def _xml_to_dict(self, element):                                                 # Convert XML parent object from Clixon into a Python dictionary to avoids hardcoding every YANG leaf one by one
         if element is None:
             return {}
 
@@ -90,17 +90,17 @@ class Agent:
             return value
         return [value]
 
-    def _has_change(self, changed_leafs, *names):
+    def _has_change(self, changed_leafs, *names):                                                 # agent decides whether to send a field to the forwarder.
         return any(name in changed_leafs for name in names)
 
-    def _add_changed(self, payload, changed_leafs, yang_leaf, api_field, value, transform=None):
+    def _add_changed(self, payload, changed_leafs, yang_leaf, api_field, value, transform=None):   # helper for sending only changed values
         if yang_leaf not in changed_leafs:
             return
         if transform:
             value = transform(value)
         payload[api_field] = value
 
-    def _port_range(self, value):
+    def _port_range(self, value):                                                                  # Even when YANG has only one port, forwarder may expect port ranges. This converts a single port into forwarder format.
         if isinstance(value, list):
             value = value[0] if value else None
         if value is None or value == "any":
@@ -108,7 +108,7 @@ class Agent:
         port = int(value)
         return {"start": port, "end": port}
 
-    def _generate_wireguard_tunnel_keys(self, tunnel_name):                          # generate and save WireGuard tunnel keys uding curve25519
+    def _generate_wireguard_tunnel_keys(self, tunnel_name):                                          # generate and save WireGuard tunnel keys uding curve25519
         private_dir = "/var/lib/sdwan-cpe/keys"
         public_dir = "/var/lib/clixon/local-public-keys"
 
