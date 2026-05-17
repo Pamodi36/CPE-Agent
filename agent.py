@@ -433,11 +433,6 @@ class Agent:
         return [self._operation("PATCH", f"/api/v1/flow-policies/{policy_id}", {"match": match})]
 
     def _build_operations_from_object(self, object_type, parent_dict, changed_leafs, delete=False):
-        print("\n===== CLIXON CHANGED OBJECT RECEIVED =====")
-        print("object_type:", object_type)
-        print("changed_leafs:", changed_leafs)
-        print(json.dumps(parent_dict, indent=2))
-
         if object_type == "wan-link":
             return self._build_wan_link_operations(parent_dict, changed_leafs, delete)
 
