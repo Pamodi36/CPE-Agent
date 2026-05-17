@@ -157,6 +157,7 @@ class Agent:
         except Exception as e:
             logging.exception("Failed to get or create WireGuard keys for tunnel %s: %s", tunnel_name, e)
             return None, None
+
     # =====================================================================================
     # Publish operations data in Datastore
     # =====================================================================================
@@ -174,7 +175,7 @@ class Agent:
 
         try:
             operation = self._operation("POST", f"/api/v1/wan-links/{wan_name}/nat-detection",
-                { "interface_name": interface_name } )
+                {"interface_name": interface_name})
 
             self._send_forwarder_transaction([operation], validate_only=False)
 
@@ -198,6 +199,7 @@ class Agent:
         except Exception as e:
             logging.exception("NAT detection failed for WAN link %s: %s", wan_name, e)
             return None
+
     # =====================================================================================
     # Forwarder API helpers
     # =====================================================================================
@@ -236,7 +238,6 @@ class Agent:
     def _build_wan_link_operations(self, parent_dict, changed_leafs, delete=False):
         name = parent_dict.get("name")
         interface_name = parent_dict.get("interface-name")
-        role = parent_dict.get("role")
         admin_enabled = self._bool_value(parent_dict.get("admin-enabled"), True)
         address_mode = parent_dict.get("address-mode")
         static_address = parent_dict.get("static-address")
@@ -556,24 +557,32 @@ class Agent:
                     changed_objects[object_key] = {
                         "object_type": object_type,
                         "parent_dict": parent_dict,
-                        "changed_leafs": []
-                    }
-                for item in changed_objects.values():
-                    if item["object_type"] == "wan-link":
-                        parent_dict = item["parent_dict"]
-                        changed_leafs = item["changed_leafs"]
+                        "changed_leafs": []}
 
-        if self._has_change(changed_leafs, "interface-name", "role", "address-mode", "static-address", "static-gateway", "admin-enabled"):
-            nat_detection_candidates.append(parent_dict)
                 changed_objects[object_key]["changed_leafs"].append(changed_leaf)
 
         for item in changed_objects.values():
+            object_type = item["object_type"]
+            parent_dict = item["parent_dict"]
+            changed_leafs = item["changed_leafs"]
+
             operations.extend(
                 self._build_operations_from_object(
-                    item["object_type"],
-                    item["parent_dict"],
-                    item["changed_leafs"],
+                    object_type,
+                    parent_dict,
+                    changed_leafs,
                     delete=False))
+
+            if object_type == "wan-link":
+                if self._has_change(
+                    changed_leafs,
+                    "interface-name",
+                    "role",
+                    "address-mode",
+                    "static-address",
+                    "static-gateway",
+                    "admin-enabled"):
+                    nat_detection_candidates.append(parent_dict)
 
         added = root.find("added")
         if added is not None:
@@ -611,13 +620,13 @@ class Agent:
         forwarder_result = self._send_forwarder_transaction(
             operations=operations,
             validate_only=validate_only)
-        
+
         if phase == "commit":
             for wan in nat_detection_candidates:
                 self.detect_and_store_nat_type(
                     wan.get("name"),
                     wan.get("interface-name"),
-                    wan.get("role")  )
+                    wan.get("role"))
 
         return {
             "status": "ok",
@@ -943,7 +952,6 @@ class Agent:
         logging.info("Starting Clixon callback server on %s:%s", host, port)
         server.serve_forever()
 
-
 class ClixonCallbackHandler(BaseHTTPRequestHandler):
     agent = None
 
@@ -979,6 +987,7 @@ class ClixonCallbackHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         return
+
 # =====================================================================================
 # Temporary fake metric reader for testing agent.py before real metric_reader.py is ready
 # =====================================================================================
@@ -1060,7 +1069,7 @@ class FakeMetricReader:
                 "stale": False,
                 "source": "fake",
                 "reason": "fake metric for wg03"}
-            
+
         return {
             "latency_ms": None,
             "jitter_ms": None,
