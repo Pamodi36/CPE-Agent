@@ -10,7 +10,6 @@ import base64
 import xml.etree.ElementTree as ET                                                  #to parse XML transaction messages sent by Clixon callback plugin
 
 from http.server import BaseHTTPRequestHandler, HTTPServer                          #simple internal HTTP server for receiving Clixon callback messages
-
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 
@@ -30,21 +29,20 @@ class Agent:
         self.generated_tunnel_keys = {}
 
         self.forwarder_base_url = os.environ.get("FORWARDER_BASE_URL","http://vcpe-forwarder:9090")
-        self.forwarder_dry_run = os.environ.get("FORWARDER_DRY_RUN", "1") == "1"         #Since forwarder is not ready yet,a dry-run will be enabled by default (FORWARDER_DRY_RUN=0 to send real API calls)
+        self.forwarder_dry_run  = os.environ.get("FORWARDER_DRY_RUN", "1") == "1"        #Since forwarder is not ready yet,a dry-run will be enabled by default (FORWARDER_DRY_RUN=0 to send real API calls)
 
     # =====================================================================================
     # Basic helpers
     # =====================================================================================
-    def _allocate_fwmark(self, class_name, index):                                       #called by "_make_steering_decisions()"
-        # Agent-assigned fwmark for a traffic class.
+    def _allocate_fwmark(self, class_name, index):                                       #called by "_make_steering_decisions()". CPE agent assigned fwmark for a traffic class.
         return 1000 + index
 
-    def _index_states_by_name(self, states):                                            #called by "_make_steering_decisions()"
+    def _index_states_by_name(self, states):                                             #called by "_make_steering_decisions()"
         indexed = {}
-        for item in states:                                                             #Loops through each state item in the list
-            name = item.get("name")                                                     #Reads the name field from the state dictionary
+        for item in states:                                                              #Loops through each state item in the list
+            name = item.get("name")                                                      #Reads the name field from the state dictionary
             if name:
-                indexed[name] = item                                                    #If the state has a name, store that item in the dictionary using the name as key
+                indexed[name] = item                                                     #If the state has a name, store that item in the dictionary using the name as key
         return indexed
 
     def _local_name(self, tag):
@@ -250,43 +248,24 @@ class Agent:
             return []
 
         if delete:
-            return [
-                self._operation(
-                    "PUT",
-                    f"/api/v1/bridges/{bridge_name}",
-                    {
-                        "bridge_id": bridge_name,
+            return [self._operation("PUT", f"/api/v1/bridges/{bridge_name}",
+                    {   "bridge_id": bridge_name,
                         "members": [],
-                        "admin_state": "down"
-                    }
-                )
-            ]
+                        "admin_state": "down"\ })]
 
         operations = []
 
         if changed_leaf in ["name", "bridge-name", "member-interface", "admin-enabled"]:
             operations.append(
-                self._operation(
-                    "PUT",
-                    f"/api/v1/bridges/{bridge_name}",
-                    {
-                        "bridge_id": bridge_name,
+                self._operation("PUT",f"/api/v1/bridges/{bridge_name}",
+                    {   "bridge_id": bridge_name,
                         "members": member_interfaces,
-                        "admin_state": "up" if admin_enabled else "down"
-                    }
-                )
-            )
+                        "admin_state": "up" if admin_enabled else "down" }))
 
         if changed_leaf in ["name", "bridge-name", "ipv4-prefix"]:
             operations.append(
-                self._operation(
-                    "PUT",
-                    f"/api/v1/interfaces/{bridge_name}/addresses",
-                    {
-                        "addresses": [ipv4_prefix] if ipv4_prefix else []
-                    }
-                )
-            )
+                self._operation("PUT", f"/api/v1/interfaces/{bridge_name}/addresses",
+                    { "addresses": [ipv4_prefix] if ipv4_prefix else [] ))
 
         return operations
 
@@ -299,11 +278,7 @@ class Agent:
 
         if delete:
             return [
-                self._operation(
-                    "DELETE",
-                    f"/api/v1/tunnels/wireguard/{name}"
-                )
-            ]
+                self._operation( "DELETE", f"/api/v1/tunnels/wireguard/{name}")]
 
         if name not in self.generated_tunnel_keys:
             private_key, public_key = self._generate_wireguard_tunnel_keys(name)
@@ -311,8 +286,7 @@ class Agent:
             if private_key and public_key:
                 self.generated_tunnel_keys[name] = {
                     "private-key": private_key,
-                    "public-key": public_key
-                }
+                    "public-key": public_key}
 
         operations = []
 
@@ -324,8 +298,8 @@ class Agent:
             "local-port",
             "local-address",
             "admin-enabled",
-            "bind-wan-link"
-        ]:
+            "bind-wan-link" ]:
+                
             operations.append(
                 self._operation(
                     "PUT", f"/api/v1/tunnels/wireguard/{name}",
