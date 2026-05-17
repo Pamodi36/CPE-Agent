@@ -314,10 +314,12 @@ class Agent:
             or f"{name}-peer"
         )
 
-        peer_address = parent_dict.get("peer-address")
-        peer_port = parent_dict.get("peer-port")
-        peer_public_key = parent_dict.get("peer-public-key")
-        allowed_prefixes = self._as_list(parent_dict.get("allowed-prefix"))
+        resolved_peer = parent_dict.get("resolved-peer", {})
+
+        peer_address = resolved_peer.get("peer-address")
+        peer_port = resolved_peer.get("peer-port")
+        peer_public_key = resolved_peer.get("peer-public-key")
+        allowed_prefixes = self._as_list(resolved_peer.get("allowed-prefix"))
         keepalive = parent_dict.get("keepalive-seconds")
 
         if changed_leaf in [
