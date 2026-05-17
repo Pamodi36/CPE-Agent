@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # coding: utf-8
-
 import copy                                                                        #to make copied versions of dictionaries/lists so the original config objects are not modified by mistake
 import json                                                                        #converting Python objects into JSON strings
 import logging                                                                     #to print info and error logs.
@@ -18,100 +17,71 @@ from cryptography.hazmat.primitives import serialization
 from config_reader import ConfigReader
 #from metric_reader import MetricReader                  #REMOVE COMMENT
 #from state_writer import StateWriter                    #REMOVE COMMENT
-from steering_manager import SteeringManager
 #from monitoring_manager import MonitoringManager        #REMOVE COMMENT
 
-logging.basicConfig(level=logging.INFO)                                            # to show info messages and errors
-
+logging.basicConfig(level=logging.INFO)                                                  # to show info messages and errors
 
 class Agent:
-    def __init__(self):                                                            #Creates object for each python module and stores it inside the agent
+    def __init__(self):                                                                  #Creates object for each python module and stores it inside the agent
         self.config_reader = ConfigReader()
         #self.metric_reader = MetricReader()              #REMOVE COMMENT
         #self.state_writer = StateWriter()                #REMOVE COMMENT
-
-        # SteeringManager is now mainly for runtime steering decisions.
-        # Configuration changes from Clixon callback go directly from agent.py to forwarder.
-        self.steering_manager = SteeringManager()
-
         #self.monitoring_manager = MonitoringManager()    #REMOVE COMMENT
         self.generated_tunnel_keys = {}
 
-        self.forwarder_base_url = os.environ.get(
-            "FORWARDER_BASE_URL",
-            "http://vcpe-forwarder:9090"
-        )
-
-        # Since forwarder is not ready yet, keep dry-run enabled by default.
-        # Later set FORWARDER_DRY_RUN=0 to send real API calls.
-        self.forwarder_dry_run = os.environ.get("FORWARDER_DRY_RUN", "1") == "1"
+        self.forwarder_base_url = os.environ.get("FORWARDER_BASE_URL","http://vcpe-forwarder:9090")
+        self.forwarder_dry_run = os.environ.get("FORWARDER_DRY_RUN", "1") == "1"         #Since forwarder is not ready yet,a dry-run will be enabled by default (FORWARDER_DRY_RUN=0 to send real API calls)
 
     # =====================================================================================
     # Basic helpers
     # =====================================================================================
-
-    def _allocate_fwmark(self, class_name, index):                                  #called by "_make_steering_decisions()"
+    def _allocate_fwmark(self, class_name, index):                                       #called by "_make_steering_decisions()"
         # Agent-assigned fwmark for a traffic class.
         return 1000 + index
 
-    def _index_states_by_name(self, states):                                        #called by "_make_steering_decisions()"
+    def _index_states_by_name(self, states):                                            #called by "_make_steering_decisions()"
         indexed = {}
-
-        for item in states:                                                         #Loops through each state item in the list
-            name = item.get("name")                                                 #Reads the name field from the state dictionary
+        for item in states:                                                             #Loops through each state item in the list
+            name = item.get("name")                                                     #Reads the name field from the state dictionary
             if name:
-                indexed[name] = item                                                #If the state has a name, store that item in the dictionary using the name as key
-
+                indexed[name] = item                                                    #If the state has a name, store that item in the dictionary using the name as key
         return indexed
 
     def _local_name(self, tag):
         if tag is None:
             return ""
-
         if "}" in tag:
             return tag.split("}", 1)[1]
-
         return tag
 
     def _first_child(self, element):
         if element is None:
             return None
-
         children = list(element)
         return children[0] if children else None
 
     def _bool_value(self, value, default=True):
         if value is None:
             return default
-
         return str(value).lower() in ["true", "1", "yes"]
 
     def _xml_leaf_text(self, parent, leaf_name):
         if parent is None:
             return None
-
         for child in list(parent):
             if self._local_name(child.tag) == leaf_name:
                 return child.text
-
         return None
 
-    def _xml_to_dict(self, element):
-        """
-        Convert XML parent object from Clixon into a Python dictionary.
-
-        This avoids hardcoding every YANG leaf one by one.
-        Repeated leaf-list/list entries become Python lists.
-        """
-
+    def _xml_to_dict(self, element):                                                    #Convert XML parent object from Clixon into a Python dictionary to avoids hardcoding every YANG leaf one by one
         if element is None:
             return {}
-
+            
         result = {}
 
         for child in list(element):
             name = self._local_name(child.tag)
-
+            
             if len(list(child)) == 0:
                 value = child.text
             else:
@@ -129,10 +99,8 @@ class Agent:
     def _as_list(self, value):
         if value is None:
             return []
-
         if isinstance(value, list):
             return value
-
         return [value]
 
     def _generate_wireguard_tunnel_keys(self, tunnel_name):                         # generate and save WireGuard tunnel keys uding curve25519
@@ -158,13 +126,11 @@ class Agent:
             private_key_bytes = private_key_obj.private_bytes(
                 encoding=serialization.Encoding.Raw,
                 format=serialization.PrivateFormat.Raw,
-                encryption_algorithm=serialization.NoEncryption()
-            )
+                encryption_algorithm=serialization.NoEncryption() )
 
             public_key_bytes = public_key_obj.public_bytes(
                 encoding=serialization.Encoding.Raw,
-                format=serialization.PublicFormat.Raw
-            )
+                format=serialization.PublicFormat.Raw)
 
             private_key = base64.b64encode(private_key_bytes).decode("ascii")
             public_key = base64.b64encode(public_key_bytes).decode("ascii")
@@ -191,23 +157,16 @@ class Agent:
     # =====================================================================================
     # Forwarder API helpers
     # =====================================================================================
-
     def _operation(self, method, path, payload=None):
-        operation = {
-            "method": method,
-            "path": path
-        }
-
+        operation = {"method": method,"path": path}
         if payload is not None:
             operation["payload"] = payload
-
         return operation
 
     def _send_forwarder_transaction(self, operations, validate_only):
         payload = {
             "validate_only": validate_only,
-            "operations": operations
-        }
+            "operations": operations }
 
         print("\n===== FORWARDER TRANSACTION GENERATED =====")
         print(json.dumps(payload, indent=2))
@@ -216,8 +175,7 @@ class Agent:
             return {
                 "status": "dry-run",
                 "message": "Forwarder is not called because FORWARDER_DRY_RUN=1",
-                "payload": payload
-            }
+                "payload": payload }
 
         url = f"{self.forwarder_base_url}/api/v1/transactions"
 
@@ -370,16 +328,11 @@ class Agent:
         ]:
             operations.append(
                 self._operation(
-                    "PUT",
-                    f"/api/v1/tunnels/wireguard/{name}",
-                    {
-                        "private_key_ref": f"secret://wireguard/{name}/private-key",
+                    "PUT", f"/api/v1/tunnels/wireguard/{name}",
+                    {   "private_key_ref": private_key,
                         "listen_port": int(local_port) if local_port else 51820,
                         "local_addresses": [local_address] if local_address else [],
-                        "description": f"WireGuard tunnel {name}"
-                    }
-                )
-            )
+                        "description": f"WireGuard tunnel {name}" } ) )
 
         peer_id = (
             parent_dict.get("peer-cpe-id")
@@ -615,7 +568,6 @@ class Agent:
     # =====================================================================================
     # Runtime steering decisions
     # =====================================================================================
-
     def _candidate_satisfies_slo(self, candidate_state, policy):
         if not candidate_state:                                                                     #If there is no state object, candidate is invalid.
             return False
@@ -804,11 +756,79 @@ class Agent:
                             "rejected": rejected,
                         },
                     }
-
                 decisions.append(decision)
-
         return decisions                                                                              #returns all steering decisions.
 
+    def _build_active_path_operations(self, decision):
+        traffic_class = decision.get("traffic-class")
+        selected_path = decision.get("selected-path")
+        path_group_id = decision.get("path-group-id") or f"{traffic_class}-failover"
+
+        if not traffic_class:
+            logging.warning("Cannot build failover operation: traffic-class is missing")
+            return []
+
+        if not selected_path:
+            logging.warning("Cannot build failover operation for %s: selected-path is missing", traffic_class)
+            return []
+
+        eligible_paths = decision.get("candidate-summary", {}).get("eligible", [])
+
+        if not eligible_paths:
+            eligible_paths = [selected_path]
+
+        members = []
+        for index, path_id in enumerate(eligible_paths, start=1):
+            members.append({
+                "path_id": path_id,
+                "priority": index * 10,
+                "weight": 100 })
+
+        payload = {
+            "strategy": "ordered_failover",
+            "active_path_id": selected_path,
+            "members": members }
+
+        return [self._operation("PUT",f"/api/v1/path-groups/{path_group_id}",payload)        ]
+
+    def _build_load_balance_operations(self, decision):
+        traffic_class = decision.get("traffic-class")
+        eligible_paths = decision.get("eligible-paths", [])
+        path_group_id = decision.get("path-group-id") or f"{traffic_class}-ecmp"
+
+        if not traffic_class:
+            logging.warning("Cannot build load-balance operation: traffic-class is missing")
+            return []
+
+        if not eligible_paths:
+            logging.warning("Cannot build load-balance operation for %s: no eligible paths", traffic_class)
+            return []
+
+        members = []
+        for path_id in eligible_paths:
+            members.append({
+                "path_id": path_id,
+                "priority": 10,
+                "weight": 100 })
+
+        payload = {"strategy": "weighted_ecmp",
+                   "members": members}
+
+        return [self._operation("PUT", f"/api/v1/path-groups/{path_group_id}", payload)]
+
+    def _build_steering_operations(self, decisions):
+        operations = []
+        for decision in decisions:
+            action = decision.get("action")
+            if action == "set-active-path":
+                operations.extend(self._build_active_path_operations(decision) )
+            elif action == "set-load-balance-policy":
+                operations.extend(self._build_load_balance_operations(decision))
+            else:
+                logging.info("No steering operation mapping for action=%s", action)
+
+        return operations
+        
     # =====================================================================================
     # Main cycle
     # =====================================================================================
@@ -854,18 +874,21 @@ class Agent:
 
         steering_decisions = self._make_steering_decisions(current_config, wan_link_states, tunnel_states)     #Makes steering decisions using current states and policies
 
+        steering_operations = self._build_steering_operations(steering_decisions)
+
         execution_results = []
-        for decision in steering_decisions:
+        if steering_operations:
             execution_results.append(
-                self.steering_manager.execute_decision(decision)
-            )
+                self._send_forwarder_transaction(
+                    operations=steering_operations,
+                    validate_only=False ))
 
         result = {                                                                                    #Build final result object
             "wan_link_states": wan_link_states,
             "tunnel_states": tunnel_states,
             "decisions": steering_decisions,
-            "execution_results": execution_results,
-        }
+            "steering_operations": steering_operations,
+            "execution_results": execution_results, }
 
         logging.info("Agent runtime steering cycle completed")                                        #Builds a summary dictionary of everything done in this cycle.
         print(json.dumps(result, indent=2))                                                           #Logs success message.
