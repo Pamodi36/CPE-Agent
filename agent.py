@@ -9,7 +9,6 @@ import base64
 import xml.etree.ElementTree as ET                                                  #to parse XML transaction messages sent by Clixon callback plugin
 
 from http.server import BaseHTTPRequestHandler, HTTPServer                          #simple internal HTTP server for receiving Clixon callback messages
-
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 
