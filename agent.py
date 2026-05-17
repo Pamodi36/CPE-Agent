@@ -173,14 +173,8 @@ class Agent:
             return None
 
         try:
-            operation = self._operation(
-                "POST",
-                f"/api/v1/wan-links/{wan_name}/nat-detection",
-                {
-                    "wan_link": wan_name,
-                    "interface_name": interface_name
-                }
-            )
+            operation = self._operation("POST", f"/api/v1/wan-links/{wan_name}/nat-detection",
+                { "interface_name": interface_name } )
 
             self._send_forwarder_transaction([operation], validate_only=False)
 
@@ -272,9 +266,6 @@ class Agent:
             operations.append(
                 self._operation("PATCH", f"/api/v1/interfaces/{interface_name}/addresses",
                                 {"addresses": addresses}))
-
-        if self._has_change(changed_leafs, "interface-name", "role", "address-mode", "static-address", "static-gateway", "admin-enabled"):
-            self.detect_and_store_nat_type(name, interface_name, role)
 
         return operations
 
@@ -534,6 +525,7 @@ class Agent:
 
         operations = []
         changed_objects = {}
+        nat_detection_candidates = []
 
         changed = root.find("changed")
         if changed is not None:
@@ -564,8 +556,15 @@ class Agent:
                     changed_objects[object_key] = {
                         "object_type": object_type,
                         "parent_dict": parent_dict,
-                        "changed_leafs": []}
+                        "changed_leafs": []
+                    }
+                for item in changed_objects.values():
+                    if item["object_type"] == "wan-link":
+                        parent_dict = item["parent_dict"]
+                        changed_leafs = item["changed_leafs"]
 
+        if self._has_change(changed_leafs, "interface-name", "role", "address-mode", "static-address", "static-gateway", "admin-enabled"):
+            nat_detection_candidates.append(parent_dict)
                 changed_objects[object_key]["changed_leafs"].append(changed_leaf)
 
         for item in changed_objects.values():
@@ -612,6 +611,13 @@ class Agent:
         forwarder_result = self._send_forwarder_transaction(
             operations=operations,
             validate_only=validate_only)
+        
+        if phase == "commit":
+            for wan in nat_detection_candidates:
+                self.detect_and_store_nat_type(
+                    wan.get("name"),
+                    wan.get("interface-name"),
+                    wan.get("role")  )
 
         return {
             "status": "ok",
