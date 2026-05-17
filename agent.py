@@ -251,7 +251,7 @@ class Agent:
             return [self._operation("PUT", f"/api/v1/bridges/{bridge_name}",
                     {   "bridge_id": bridge_name,
                         "members": [],
-                        "admin_state": "down"\ })]
+                        "admin_state": "down" })]
 
         operations = []
 
@@ -265,7 +265,7 @@ class Agent:
         if changed_leaf in ["name", "bridge-name", "ipv4-prefix"]:
             operations.append(
                 self._operation("PUT", f"/api/v1/interfaces/{bridge_name}/addresses",
-                    { "addresses": [ipv4_prefix] if ipv4_prefix else [] ))
+                    { "addresses": [ipv4_prefix] if ipv4_prefix else [] }))
 
         return operations
 
