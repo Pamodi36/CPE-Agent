@@ -157,6 +157,37 @@ class Agent:
         except Exception as e:
             logging.exception("Failed to get or create WireGuard keys for tunnel %s: %s", tunnel_name, e)
             return None, None
+    # =====================================================================================
+    # Publish operations data in datastore
+    # =====================================================================================
+    def get_nat_state_from_forwarder(self):                                                    #poll NAT status from forwarder
+        url = f"{forwarder_base_url}/api/v1/nat-state"
+
+        response = requests.get(
+            url,
+            headers={"Accept": "application/json"},
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def store_nat_status_in_datastore(self, wan_name, nat_type):
+        if not wan_name or not nat_type:
+            return False
+
+        state_dir = "/var/lib/clixon/wan-link-nat-types"                                      # directory where nat-type files will be stored
+        state_file = f"{state_dir}/{wan_name}.nat"                                            # builds the filename for each wan-link
+
+        try:
+            os.makedirs(state_dir, exist_ok=True)                                             # creates the directory /var/lib/clixon/wan-link-nat-types if it does not already exist
+            with open(state_file, "w") as f:
+                f.write(nat_type)
+            logging.info("Stored nat-type for wan link %s in runtime state file %s", wan_name, state_file)
+            return True
+
+        except Exception as e:
+            logging.exception("Failed to store nat-type runtime file for %s: %s", wan_name, e)
+            return False
 
     # =====================================================================================
     # Forwarder API helpers
