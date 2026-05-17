@@ -523,10 +523,20 @@ class Agent:
 
     def handle_clixon_transaction(self, xml_body):
         root = ET.fromstring(xml_body)
-
+    
         phase = root.findtext("phase")
+        transaction_id = root.findtext("transaction-id")
         validate_only = phase == "validate"
-
+    
+        if transaction_id == "0":
+            logging.info("Ignoring Clixon startup transaction 0")
+            return {
+                "status": "ok",
+                "phase": phase,
+                "ignored": True,
+                "reason": "startup transaction"
+            }
+    
         if phase not in ["validate", "commit"]:
             raise ValueError(f"Unsupported Clixon phase: {phase}")
 
