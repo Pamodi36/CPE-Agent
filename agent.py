@@ -1082,6 +1082,6 @@ class FakeMetricReader:
 
 if __name__ == "__main__":
     agent = Agent()
-
     agent.metric_reader = FakeMetricReader()                  # Temporary fake metric reader for testing agent.py before real metric_reader.py is ready
+    agent.run_once()                                          # Run one steering decision cycle at startup for testing
     agent.run_clixon_callback_server()                        # Start internal API used by Clixon callback plugin.
