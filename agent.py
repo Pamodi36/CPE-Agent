@@ -158,37 +158,52 @@ class Agent:
             logging.exception("Failed to get or create WireGuard keys for tunnel %s: %s", tunnel_name, e)
             return None, None
     # =====================================================================================
-    # Publish operations data in datastore
+    # Publish operations data in Datastore
     # =====================================================================================
-    def get_nat_state_from_forwarder(self):                                                    #poll NAT status from forwarder
-        url = f"{forwarder_base_url}/api/v1/nat-state"
+    def detect_and_store_nat_type(self, wan_name, interface_name, role):
+        if role == "ipvpn":
+            logging.info("Skipping NAT detection for IPvPN WAN link %s", wan_name)
+            return None
 
-        response = requests.get(
-            url,
-            headers={"Accept": "application/json"},
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
-        return response.json()
+        if not wan_name or not interface_name:
+            return None
 
-    def store_nat_status_in_datastore(self, wan_name, nat_type):
-        if not wan_name or not nat_type:
-            return False
-
-        state_dir = "/var/lib/clixon/wan-link-nat-types"                                      # directory where nat-type files will be stored
-        state_file = f"{state_dir}/{wan_name}.nat"                                            # builds the filename for each wan-link
+        if self.forwarder_dry_run:
+            logging.info("Dry-run: NAT detection skipped for WAN link %s", wan_name)
+            return None
 
         try:
-            os.makedirs(state_dir, exist_ok=True)                                             # creates the directory /var/lib/clixon/wan-link-nat-types if it does not already exist
-            with open(state_file, "w") as f:
+            operation = self._operation(
+                "POST",
+                f"/api/v1/wan-links/{wan_name}/nat-detection",
+                {
+                    "wan_link": wan_name,
+                    "interface_name": interface_name
+                }
+            )
+
+            self._send_forwarder_transaction([operation], validate_only=False)
+
+            url = f"{self.forwarder_base_url}/api/v1/wan-links/{wan_name}/nat-type"
+            response = requests.get(url, headers={"Accept": "application/json"}, timeout=10)
+            response.raise_for_status()
+
+            nat_type = response.json().get("nat-type")
+            if not nat_type:
+                return None
+
+            state_dir = "/var/lib/clixon/wan-link-nat-types"
+            os.makedirs(state_dir, exist_ok=True)
+
+            with open(f"{state_dir}/{wan_name}.nat", "w") as f:
                 f.write(nat_type)
-            logging.info("Stored nat-type for wan link %s in runtime state file %s", wan_name, state_file)
-            return True
+
+            logging.info("Stored nat-type=%s for wan-link=%s", nat_type, wan_name)
+            return nat_type
 
         except Exception as e:
-            logging.exception("Failed to store nat-type runtime file for %s: %s", wan_name, e)
-            return False
-
+            logging.exception("NAT detection failed for WAN link %s: %s", wan_name, e)
+            return None
     # =====================================================================================
     # Forwarder API helpers
     # =====================================================================================
@@ -227,6 +242,7 @@ class Agent:
     def _build_wan_link_operations(self, parent_dict, changed_leafs, delete=False):
         name = parent_dict.get("name")
         interface_name = parent_dict.get("interface-name")
+        role = parent_dict.get("role")
         admin_enabled = self._bool_value(parent_dict.get("admin-enabled"), True)
         address_mode = parent_dict.get("address-mode")
         static_address = parent_dict.get("static-address")
@@ -256,6 +272,9 @@ class Agent:
             operations.append(
                 self._operation("PATCH", f"/api/v1/interfaces/{interface_name}/addresses",
                                 {"addresses": addresses}))
+
+        if self._has_change(changed_leafs, "interface-name", "role", "address-mode", "static-address", "static-gateway", "admin-enabled"):
+            self.detect_and_store_nat_type(name, interface_name, role)
 
         return operations
 
