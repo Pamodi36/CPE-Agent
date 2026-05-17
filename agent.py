@@ -27,8 +27,8 @@ class Agent:
         #self.monitoring_manager = MonitoringManager()    #REMOVE COMMENT
 
         self.generated_tunnel_keys = {}
-        self.forwarder_base_url = os.environ.get("FORWARDER_BASE_URL", "http://vcpe-forwarder:9090")
-        self.forwarder_dry_run = os.environ.get("FORWARDER_DRY_RUN", "1") == "1"    #Since forwarder is not ready yet,a dry-run will be enabled by default (FORWARDER_DRY_RUN=0 to send real API calls)
+        self.forwarder_base_url = "http://vcpe-forwarder:9090"
+        self.forwarder_dry_run = True                                               #Since forwarder is not ready yet,a dry-run will be enabled by default (false send real API calls)
 
     # =====================================================================================
     # Basic helpers
