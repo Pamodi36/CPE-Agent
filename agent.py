@@ -39,7 +39,7 @@ class Agent:
 
         self.forwarder_base_url = os.environ.get(
             "FORWARDER_BASE_URL",
-            "http://127.0.0.1:9090"
+            "http://vcpe-forwarder:9090"
         )
 
         # Since forwarder is not ready yet, keep dry-run enabled by default.
