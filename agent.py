@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # coding: utf-8
-import json                                                                        #converting Python objects into JSON strings
+import json                                                                           
 import logging                                                                   
 import time
 import requests
@@ -26,22 +26,22 @@ class Agent:
         #self.state_writer = StateWriter()                #REMOVE COMMENT
         #self.monitoring_manager = MonitoringManager()    #REMOVE COMMENT
 
-        self.generated_tunnel_keys = {}                                              #stores generated WireGuard keys during the current agent runtime
-        self.forwarder_base_url = "http://vcpe-forwarder:9090"                       #fixed forwarder API URL used by the agent
-        self.forwarder_dry_run = True                                                #Since forwarder is not ready yet,a dry-run will be enabled by default (false send real API calls)
+        self.generated_tunnel_keys = {}                                              # stores generated WireGuard keys during the current agent runtime
+        self.forwarder_base_url = "http://vcpe-forwarder:9090"                       # fixed forwarder API URL used by the agent
+        self.forwarder_dry_run = True                                                # Since forwarder is not ready yet,a dry-run will be enabled by default (false send real API calls)
 
     # =====================================================================================
     # Basic helpers
     # =====================================================================================
-    def _allocate_fwmark(self, class_name, index):                                   #called by "_make_steering_decisions()". CPE agent assigned fwmark for a traffic class.
+    def _allocate_fwmark(self, class_name, index):                                   # called by "_make_steering_decisions()". CPE agent assigned fwmark for a traffic class.
         return 1000 + index
 
-    def _index_states_by_name(self, states):                                         #called by "_make_steering_decisions()"
+    def _index_states_by_name(self, states):                                         # called by "_make_steering_decisions()"
         indexed = {}
-        for item in states:                                                          #Loops through each state item in the list
-            name = item.get("name")                                                  #Reads the name field from the state dictionary
+        for item in states:                                                          # Loops through each state item in the list
+            name = item.get("name")                                                  # Reads the name field from the state dictionary
             if name:
-                indexed[name] = item                                                 #If the state has a name, store that item in the dictionary using the name as key
+                indexed[name] = item                                                 # If the state has a name, store that item in the dictionary using the name as key
         return indexed
 
     def _local_name(self, tag):
@@ -54,8 +54,8 @@ class Agent:
     def _first_child(self, element):
         if element is None:
             return None
-        children = list(element)                                                     #gets all direct child XML nodes inside this element
-        return children[0] if children else None                                     #returns the real object inside wrappers like parent data
+        children = list(element)                                                     # gets all direct child XML nodes inside this element
+        return children[0] if children else None                                     # returns the real object inside wrappers like parent data
 
     def _xml_to_dict(self, element):                                                 # Convert XML parent object from Clixon into a Python dictionary to avoids hardcoding every YANG leaf one by one
         if element is None:
@@ -83,35 +83,35 @@ class Agent:
             return []
         if isinstance(value, list):
             return value
-        return [value]                                                               #single value is wrapped as a list to make later processing easier
+        return [value]                                                                             # single value is wrapped as a list to make later processing easier
 
-    def _has_change(self, changed_leafs, *names):                                                 # agent decides whether to send a field to the forwarder.
-        return any(name in changed_leafs for name in names)                         #returns True if at least one requested leaf is in the changed leaf list
+    def _has_change(self, changed_leafs, *names):                                                  # agent decides whether to send a field to the forwarder.
+        return any(name in changed_leafs for name in names)                                        # returns True if at least one requested leaf is in the changed leaf list
 
     def _add_changed(self, payload, changed_leafs, yang_leaf, api_field, value, transform=None):   # helper for sending only changed values
         if yang_leaf not in changed_leafs:
             return
         if transform:
-            value = transform(value)                                                        #optional conversion, for example string port to integer port
-        payload[api_field] = value                                                   #adds only the changed field to the forwarder payload
+            value = transform(value)                                                               # optional conversion, for example string port to integer port
+        payload[api_field] = value                                                                 # adds only the changed field to the forwarder payload
 
     def _port_range(self, value):                                                                  # Even when YANG has only one port, forwarder may expect port ranges. This converts a single port into forwarder format.
         if isinstance(value, list):
             value = value[0] if value else None
         if value is None or value == "any":
-            return None                                                                      #no port filter is needed when the YANG value is any
-        port = int(value)                                                            #forwarder expects port numbers as integers
-        return {"start": port, "end": port}                                          #single port is represented as a range with same start and end
+            return None                                                                            # no port filter is needed when the YANG value is any
+        port = int(value)                                                                          # forwarder expects port numbers as integers
+        return {"start": port, "end": port}                                                        # single port is represented as a range with same start and end
 
-    def _generate_wireguard_tunnel_keys(self, tunnel_name):                                          # generate and save WireGuard tunnel keys uding curve25519
+    def _generate_wireguard_tunnel_keys(self, tunnel_name):                                        # generate and save WireGuard tunnel keys uding curve25519
         private_dir = "/var/lib/sdwan-cpe/keys"
         public_dir = "/var/lib/clixon/local-public-keys"
 
-        private_path = f"{private_dir}/{tunnel_name}.private"                       #local private key file path for this tunnel
-        public_path = f"{public_dir}/{tunnel_name}.pub"                             #local public key file path exposed later as config false state
+        private_path = f"{private_dir}/{tunnel_name}.private"                                      # local private key file path for this tunnel
+        public_path = f"{public_dir}/{tunnel_name}.pub"                                            # local public key file path exposed later as config false state
 
         try:
-            if os.path.exists(private_path) and os.path.exists(public_path):          #reuse existing keys instead of generating new keys every restart
+            if os.path.exists(private_path) and os.path.exists(public_path):                       # reuse existing keys instead of generating new keys every restart
                 with open(private_path, "r") as f:
                     private_key = f.read().strip()
 
@@ -120,8 +120,8 @@ class Agent:
 
                 return private_key, public_key
 
-            private_key_obj = X25519PrivateKey.generate()                            #creates a new WireGuard-compatible private key
-            public_key_obj = private_key_obj.public_key()                             #derives the matching public key from the private key
+            private_key_obj = X25519PrivateKey.generate()                                          # creates a new WireGuard-compatible private key
+            public_key_obj = private_key_obj.public_key()                                          # derives the matching public key from the private key
 
             private_key_bytes = private_key_obj.private_bytes(
                 encoding=serialization.Encoding.Raw,
@@ -132,19 +132,19 @@ class Agent:
                 encoding=serialization.Encoding.Raw,
                 format=serialization.PublicFormat.Raw)
 
-            private_key = base64.b64encode(private_key_bytes).decode("ascii")         #WireGuard keys are stored and passed as base64 text
-            public_key = base64.b64encode(public_key_bytes).decode("ascii")           #public key is also stored as base64 text
+            private_key = base64.b64encode(private_key_bytes).decode("ascii")                     # WireGuard keys are stored and passed as base64 text
+            public_key = base64.b64encode(public_key_bytes).decode("ascii")                       # public key is also stored as base64 text
 
             os.makedirs(private_dir, exist_ok=True)
             os.makedirs(public_dir, exist_ok=True)
 
             with open(private_path, "w") as f:
                 f.write(private_key)
-            os.chmod(private_path, 0o600)                                            #private key file is readable only by the owner
+            os.chmod(private_path, 0o600)                                                        # private key file is readable only by the owner
 
             with open(public_path, "w") as f:
                 f.write(public_key)
-            os.chmod(public_path, 0o644)                                             #public key can be read by Clixon state plugin
+            os.chmod(public_path, 0o644)                                                         # public key can be read by Clixon state plugin
 
             logging.info("Created WireGuard keys for tunnel %s", tunnel_name)
             return private_key, public_key
@@ -158,28 +158,28 @@ class Agent:
     # =====================================================================================
     def detect_and_store_nat_type(self, wan_name, interface_name, role):
         if role != "ipvpn" and wan_name and interface_name:
-            if self.forwarder_dry_run:                                                         #in dry-run mode, only print the transaction without calling forwarder
+            if self.forwarder_dry_run:                                                             # in dry-run mode, only print the transaction without calling forwarder
                 logging.info("Dry-run: NAT detection skipped for WAN link %s", wan_name)
                 return None
 
             try:
-                operation = self._operation("POST", f"/api/v1/wan-links/{wan_name}/nat-detection", #POST tells the forwarder to start NAT detection as an action
+                operation = self._operation("POST", f"/api/v1/wan-links/{wan_name}/nat-detection", # POST tells the forwarder to start NAT detection a
                     {"interface_name": interface_name})
 
-                self._send_forwarder_transaction([operation], validate_only=False)             # NAT detection is a real action, not a validate only check
+                self._send_forwarder_transaction([operation], validate_only=False)                 # NAT detection is a real action, not a validate only check
 
-                url = f"{self.forwarder_base_url}/api/v1/wan-links/{wan_name}/nat-type"        #forwarder endpoint used to read the detected NAT result
+                url = f"{self.forwarder_base_url}/api/v1/wan-links/{wan_name}/nat-type"            # forwarder endpoint used to read the detected NAT result
                 response = requests.get(url, headers={"Accept": "application/json"}, timeout=10)
-                response.raise_for_status()                                                    #raises an error if the forwarder returns a failed HTTP status
+                response.raise_for_status()                                                        # raises an error if the forwarder returns a failed HTTP status
 
-                nat_type = response.json().get("nat-type")                                     #reads nat-type value returned by the forwarder
+                nat_type = response.json().get("nat-type")                                         # reads nat-type value returned by the forwarder
                 if not nat_type:
                     return None
 
-                state_dir = "/var/lib/clixon/wan-link-nat-types"                               #state plugin can read this directory to publish config false nat-type
+                state_dir = "/var/lib/clixon/wan-link-nat-types"                                   # state plugin can read this directory to publish config false nat-type
                 os.makedirs(state_dir, exist_ok=True)
 
-                with open(f"{state_dir}/{wan_name}.nat", "w") as f:                            #one runtime state file is stored per WAN link
+                with open(f"{state_dir}/{wan_name}.nat", "w") as f:                                # one runtime state file is stored per WAN link
                     f.write(nat_type)
 
                 logging.info("Stored nat-type=%s for wan-link=%s", nat_type, wan_name)
@@ -195,15 +195,15 @@ class Agent:
     # Forwarder API helpers
     # =====================================================================================
     def _operation(self, method, path, payload=None):
-        operation = {"method": method, "path": path}                                         #basic forwarder operation structure
+        operation = {"method": method, "path": path}                                         # basic forwarder operation structure
         if payload is not None:
-            operation["payload"] = payload                                                   #payload is added only when the operation needs data
+            operation["payload"] = payload                                                   # payload is added only when the operation needs data
         return operation
 
     def _send_forwarder_transaction(self, operations, validate_only):
         payload = {
-            "validate_only": validate_only,                                                  #"True" during Clixon validate phase, "False" during commit phase. Detection happens in happens in handle_clixon_transaction()
-            "operations": operations}                                                        #all forwarder operations are sent as one transaction
+            "validate_only": validate_only,                                                  # "True" during Clixon validate phase, "False" during commit phase. Detection happens in happens in handle_clixon_transaction()
+            "operations": operations}                                                        # all forwarder operations are sent as one transaction
 
         print("\n===== FORWARDER TRANSACTION GENERATED =====")
         print(json.dumps(payload, indent=2))
@@ -244,7 +244,7 @@ class Agent:
         if delete:
             return [self._operation("PATCH", f"/api/v1/interfaces/{interface_name}/state", {"state": "down"})]
 
-        operations = []                                                               #stores the forwarder operations generated for this object
+        operations = []                                                                       #stores the forwarder operations generated for this object
 
         if self._has_change(changed_leafs, "admin-enabled"):
             operations.append(
@@ -252,7 +252,7 @@ class Agent:
                                 {"state": "up" if admin_enabled else "down"}))
 
         if self._has_change(changed_leafs, "static-address", "static-gateway", "address-mode"):
-            payload = { "address_mode": address_mode}
+            payload = { "address_mode": address_mode }
     
             if address_mode == "static":
                 if static_address:
@@ -260,46 +260,69 @@ class Agent:
                 if static_gateway:
                     payload["gateway"] = static_gateway
             else:
-                payload["addresses"] = []                                              #if dhcp, no address to configure
+                payload["addresses"] = []                                                    #if dhcp, no address to configure
                 payload["gateway"] = None
-    
             operations.append( self._operation("PATCH", f"/api/v1/interfaces/{interface_name}/addresses", payload))
     
         return operations
-
+        
     def _build_lan_link_operations(self, parent_dict, changed_leafs, delete=False):
         name = parent_dict.get("name")
-        bridge_name = parent_dict.get("bridge-name") or name
-        ipv4_prefix = parent_dict.get("ipv4-prefix")
+        bridge_name = parent_dict.get("bridge-name")
+        target_interface = bridge_name if bridge_name else name
         member_interfaces = self._as_list(parent_dict.get("member-interface"))
+        ipv4_prefix = parent_dict.get("ipv4-prefix")
         admin_enabled = parent_dict.get("admin-enabled")
-
+        dhcp_server = parent_dict.get("dhcp-server", {})
+    
         if isinstance(changed_leafs, str):
             changed_leafs = [changed_leafs]                                                  #allows the function to accept either one leaf or a list of leaves
-
-        if not bridge_name:
-            logging.warning("LAN link has no name or bridge-name")
+    
+        if not target_interface:
+            logging.warning("LAN link has no interface name")
             return []
-
+    
         if delete:
-            return [self._operation("PATCH", f"/api/v1/bridges/{bridge_name}",
-                    {"members": [], "admin_state": "down"})]
-
-        operations = []                                                               #stores the forwarder operations generated for this object
-
-        bridge_payload = {}                                                          #only changed LAN bridge fields are added here
-        self._add_changed(bridge_payload, changed_leafs, "member-interface", "members", member_interfaces)
-        self._add_changed(bridge_payload, changed_leafs, "admin-enabled", "admin_state",
-                          "up" if admin_enabled else "down")
-
-        if bridge_payload:
-            operations.append(self._operation("PATCH", f"/api/v1/bridges/{bridge_name}", bridge_payload))
-
+            if bridge_name:
+                return [self._operation("PATCH", f"/api/v1/bridges/{bridge_name}",
+                        {"members": [], "admin_state": "down"})]
+    
+            return [self._operation("PATCH", f"/api/v1/interfaces/{name}/state",
+                    {"state": "down"})]
+    
+        operations = []                                                                       #stores the forwarder operations generated for this object
+    
+        if bridge_name:
+            bridge_payload = {}                                                               # empty payload for bridge updates. only changed bridge fields are added here
+            self._add_changed(bridge_payload, changed_leafs, "member-interface", "members", member_interfaces)
+            self._add_changed(bridge_payload, changed_leafs, "admin-enabled", "admin_state",
+                              "up" if admin_enabled else "down")
+    
+            if bridge_payload:
+                operations.append(self._operation("PATCH", f"/api/v1/bridges/{bridge_name}", bridge_payload))
+    
+        else:
+            if self._has_change(changed_leafs, "admin-enabled"):
+                operations.append(
+                    self._operation("PATCH", f"/api/v1/interfaces/{name}/state",
+                                    {"state": "up" if admin_enabled else "down"}))
+    
         if self._has_change(changed_leafs, "ipv4-prefix"):
             operations.append(
-                self._operation("PATCH", f"/api/v1/interfaces/{bridge_name}/addresses",
+                self._operation("PATCH", f"/api/v1/interfaces/{target_interface}/addresses",
                                 {"addresses": [ipv4_prefix] if ipv4_prefix else []}))
-
+    
+        if self._has_change(changed_leafs, "enabled", "pool-start", "pool-end", "dns-server", "lease-time-seconds"):
+            dhcp_payload = {
+                "enabled": self._bool_value(dhcp_server.get("enabled"), False),
+                "interface": target_interface,
+                "pool_start": dhcp_server.get("pool-start"),
+                "pool_end": dhcp_server.get("pool-end"),
+                "dns_servers": self._as_list(dhcp_server.get("dns-server")),
+                "lease_time_seconds": int(dhcp_server.get("lease-time-seconds") or 86400)
+            }
+            operations.append( self._operation("PUT", f"/api/v1/services/dhcp/{target_interface}", dhcp_payload))
+    
         return operations
 
     def _build_tunnel_operations(self, parent_dict, changed_leafs, delete=False):
@@ -338,7 +361,7 @@ class Agent:
         self._add_changed(tunnel_payload, changed_leafs, "local-address", "local_addresses",
                           [local_address] if local_address else [])
         self._add_changed(tunnel_payload, changed_leafs, "admin-enabled", "admin_state",
-                          "up" if self._bool_value(parent_dict.get("admin-enabled"), True) else "down")
+                          "up" if parent_dict.get("admin-enabled") else "down")
 
         if self._has_change(changed_leafs, "name"):
             tunnel_payload["private_key"] = private_key
@@ -402,7 +425,7 @@ class Agent:
         if self._has_change(changed_leafs, "action"):
             payload["action"] = {"type": "allow" if parent_dict.get("action") == "allow" else "deny"}
 
-        self._add_changed(payload, changed_leafs, "log", "log", self._bool_value(parent_dict.get("log"), False))
+        self._add_changed(payload, changed_leafs, "log", "log", parent_dict.get("log"), False))
 
         self._add_changed(match, changed_leafs, "src-prefix", "src_prefix", parent_dict.get("src-prefix"))
         self._add_changed(match, changed_leafs, "dst-prefix", "dst_prefix", parent_dict.get("dst-prefix"))
@@ -594,7 +617,7 @@ class Agent:
                         [changed_leaf],
                         delete=False))
 
-        deleted = root.find("deleted")                                                 #contains deleted datastore objects
+        deleted = root.find("deleted")                                                 # contains deleted datastore objects (normally delete=False, but when clixon reports delete->delete=True)
         if deleted is not None:
             for node in deleted.findall("node"):
                 changed_leaf = node.findtext("node-name")
