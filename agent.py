@@ -7,6 +7,7 @@ import requests
 import os
 import base64
 import xml.etree.ElementTree as ET                                                    # to parse XML transaction messages sent by Clixon callback plugin
+import threading
 
 from http.server import BaseHTTPRequestHandler, HTTPServer                            # internal HTTP server for receiving Clixon callback messages
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
@@ -252,7 +253,29 @@ class Agent:
                 return None
 
         return None
+    # =====================================================================================
+    # Check RESTCONF Server status before running Steering Loop
+    # =====================================================================================
+    def wait_for_restconf(self, timeout_sec=60):
+        start_time = time.time()
 
+        while time.time() - start_time < timeout_sec:
+            try:
+                self.config_reader.get_intended_config()
+                logging.info("RESTCONF is ready for steering loop")
+                return True
+            except Exception:
+                logging.info("Waiting for RESTCONF before starting steering loop")
+                time.sleep(2)
+
+        logging.warning("RESTCONF was not ready within timeout")
+        return False
+
+    def run_steering_loop_after_restconf_ready(self, interval_sec=10):
+        if not self.wait_for_restconf():
+            return
+
+        self.run_forever(interval_sec=interval_sec)
     # =====================================================================================
     # Forwarder API helpers
     # =====================================================================================
@@ -1124,5 +1147,12 @@ class FakeMetricReader:
 if __name__ == "__main__":
     agent = Agent()
     agent.metric_reader = FakeMetricReader()                  # Temporary fake metric reader for testing agent.py before real metric_reader.py is ready
+
+    steering_thread = threading.Thread(
+        target=agent.run_steering_loop_after_restconf_ready,
+        kwargs={"interval_sec": 10},
+        daemon=True
+    )
+    steering_thread.start()                                   # Run steering loop in background after RESTCONF is ready
     agent.run_once()                                         # Run one steering decision cycle manually for testing
     agent.run_clixon_callback_server()                        # Start internal API used by Clixon callback plugin.
