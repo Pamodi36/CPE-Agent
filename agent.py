@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # coding: utf-8
 import json                                                                        #converting Python objects into JSON strings
-import logging                                                                     #to print info and error logs.
+import logging                                                                   
 import time
 import requests
 import os
 import base64
-import xml.etree.ElementTree as ET                                                  #to parse XML transaction messages sent by Clixon callback plugin
+import xml.etree.ElementTree as ET                                                    # to parse XML transaction messages sent by Clixon callback plugin
 
-from http.server import BaseHTTPRequestHandler, HTTPServer                          #simple internal HTTP server for receiving Clixon callback messages
+from http.server import BaseHTTPRequestHandler, HTTPServer                            # internal HTTP server for receiving Clixon callback messages
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 
@@ -17,18 +17,18 @@ from config_reader import ConfigReader
 #from state_writer import StateWriter                    #REMOVE COMMENT
 #from monitoring_manager import MonitoringManager        #REMOVE COMMENT
 
-logging.basicConfig(level=logging.INFO)                                             # to show info messages and errors
+logging.basicConfig(level=logging.INFO)                                               # to show info messages and errors
 
 class Agent:
-    def __init__(self):                                                             #Creates object for each python module and stores it inside the agent
+    def __init__(self):                                                     
         self.config_reader = ConfigReader()
         #self.metric_reader = MetricReader()              #REMOVE COMMENT
         #self.state_writer = StateWriter()                #REMOVE COMMENT
         #self.monitoring_manager = MonitoringManager()    #REMOVE COMMENT
 
-        self.generated_tunnel_keys = {}                                             #stores generated WireGuard keys during the current agent runtime
-        self.forwarder_base_url = "http://vcpe-forwarder:9090"                      #fixed forwarder API URL used by the agent
-        self.forwarder_dry_run = True                                               #Since forwarder is not ready yet,a dry-run will be enabled by default (false send real API calls)
+        self.generated_tunnel_keys = {}                                              #stores generated WireGuard keys during the current agent runtime
+        self.forwarder_base_url = "http://vcpe-forwarder:9090"                       #fixed forwarder API URL used by the agent
+        self.forwarder_dry_run = True                                                #Since forwarder is not ready yet,a dry-run will be enabled by default (false send real API calls)
 
     # =====================================================================================
     # Basic helpers
@@ -55,12 +55,7 @@ class Agent:
         if element is None:
             return None
         children = list(element)                                                     #gets all direct child XML nodes inside this element
-        return children[0] if children else None                                    #returns the real object inside wrappers like parent-data
-
-    def _bool_value(self, value, default=True):
-        if value is None:
-            return default
-        return str(value).lower() in ["true", "1", "yes"]                            # This converts text into Python boolean.
+        return children[0] if children else None                                     #returns the real object inside wrappers like parent data
 
     def _xml_to_dict(self, element):                                                 # Convert XML parent object from Clixon into a Python dictionary to avoids hardcoding every YANG leaf one by one
         if element is None:
@@ -162,69 +157,65 @@ class Agent:
     # Publish operations data in Datastore
     # =====================================================================================
     def detect_and_store_nat_type(self, wan_name, interface_name, role):
-        if role == "ipvpn":
-            logging.info("Skipping NAT detection for IPvPN WAN link %s", wan_name)
-            return None
-
-        if not wan_name or not interface_name:
-            return None
-
-        if self.forwarder_dry_run:                                                    #in dry-run mode, only print the transaction without calling forwarder
-            logging.info("Dry-run: NAT detection skipped for WAN link %s", wan_name)
-            return None
-
-        try:
-            operation = self._operation("POST", f"/api/v1/wan-links/{wan_name}/nat-detection", #POST tells the forwarder to start NAT detection as an action
-                {"interface_name": interface_name})
-
-            self._send_forwarder_transaction([operation], validate_only=False)        #NAT detection is a real action, not a validate-only check
-
-            url = f"{self.forwarder_base_url}/api/v1/wan-links/{wan_name}/nat-type"  #forwarder endpoint used to read the detected NAT result
-            response = requests.get(url, headers={"Accept": "application/json"}, timeout=10)
-            response.raise_for_status()                                               #raises an error if the forwarder returns a failed HTTP status
-
-            nat_type = response.json().get("nat-type")                                #reads nat-type value returned by the forwarder
-            if not nat_type:
+        if role != "ipvpn" and wan_name and interface_name:
+            if self.forwarder_dry_run:                                                         #in dry-run mode, only print the transaction without calling forwarder
+                logging.info("Dry-run: NAT detection skipped for WAN link %s", wan_name)
                 return None
 
-            state_dir = "/var/lib/clixon/wan-link-nat-types"                         #state plugin can read this directory to publish config false nat-type
-            os.makedirs(state_dir, exist_ok=True)
+            try:
+                operation = self._operation("POST", f"/api/v1/wan-links/{wan_name}/nat-detection", #POST tells the forwarder to start NAT detection as an action
+                    {"interface_name": interface_name})
 
-            with open(f"{state_dir}/{wan_name}.nat", "w") as f:                      #one runtime state file is stored per WAN link
-                f.write(nat_type)
+                self._send_forwarder_transaction([operation], validate_only=False)             # NAT detection is a real action, not a validate only check
 
-            logging.info("Stored nat-type=%s for wan-link=%s", nat_type, wan_name)
-            return nat_type
+                url = f"{self.forwarder_base_url}/api/v1/wan-links/{wan_name}/nat-type"        #forwarder endpoint used to read the detected NAT result
+                response = requests.get(url, headers={"Accept": "application/json"}, timeout=10)
+                response.raise_for_status()                                                    #raises an error if the forwarder returns a failed HTTP status
 
-        except Exception as e:
-            logging.exception("NAT detection failed for WAN link %s: %s", wan_name, e)
-            return None
+                nat_type = response.json().get("nat-type")                                     #reads nat-type value returned by the forwarder
+                if not nat_type:
+                    return None
+
+                state_dir = "/var/lib/clixon/wan-link-nat-types"                               #state plugin can read this directory to publish config false nat-type
+                os.makedirs(state_dir, exist_ok=True)
+
+                with open(f"{state_dir}/{wan_name}.nat", "w") as f:                            #one runtime state file is stored per WAN link
+                    f.write(nat_type)
+
+                logging.info("Stored nat-type=%s for wan-link=%s", nat_type, wan_name)
+                return nat_type
+
+            except Exception as e:
+                logging.exception("NAT detection failed for WAN link %s: %s", wan_name, e)
+                return None
+
+        return None
 
     # =====================================================================================
     # Forwarder API helpers
     # =====================================================================================
     def _operation(self, method, path, payload=None):
-        operation = {"method": method, "path": path}                                  #basic forwarder operation structure
+        operation = {"method": method, "path": path}                                         #basic forwarder operation structure
         if payload is not None:
-            operation["payload"] = payload                                            #payload is added only when the operation needs data
+            operation["payload"] = payload                                                   #payload is added only when the operation needs data
         return operation
 
     def _send_forwarder_transaction(self, operations, validate_only):
         payload = {
-            "validate_only": validate_only,                                                  #True during Clixon validate phase, False during commit phase
+            "validate_only": validate_only,                                                  #"True" during Clixon validate phase, "False" during commit phase. Detection happens in happens in handle_clixon_transaction()
             "operations": operations}                                                        #all forwarder operations are sent as one transaction
 
         print("\n===== FORWARDER TRANSACTION GENERATED =====")
         print(json.dumps(payload, indent=2))
 
-        if self.forwarder_dry_run:                                                    #in dry-run mode, only print the transaction without calling forwarder
+        if self.forwarder_dry_run:                                                           #in dry-run mode, only print the transaction without calling forwarder
             return {
                 "status": "dry-run",
-                "message": "Forwarder is not called because FORWARDER_DRY_RUN=1",
+                "message": "Forwarder is not called because it's not available",
                 "payload": payload}
 
         url = f"{self.forwarder_base_url}/api/v1/transactions"
-        response = requests.post(url, json=payload, timeout=10)                       #send the transaction to the forwarder API
+        response = requests.post(url, json=payload, timeout=10)                              #send the transaction to the forwarder API
         response.raise_for_status()
 
         if response.text:
@@ -233,14 +224,15 @@ class Agent:
         return {"status": "ok"}
 
     # =====================================================================================
-    # Build forwarder operations using changed node names + parent object dictionary
+    # Build forwarder operations (changed node names + parent object dictionary)
     # =====================================================================================
     def _build_wan_link_operations(self, parent_dict, changed_leafs, delete=False):
         name = parent_dict.get("name")
         interface_name = parent_dict.get("interface-name")
-        admin_enabled = self._bool_value(parent_dict.get("admin-enabled"), True)
+        admin_enabled = parent_dict.get("admin-enabled")
         address_mode = parent_dict.get("address-mode")
         static_address = parent_dict.get("static-address")
+        static_gateway = parent_dict.get("static-gateway")
 
         if isinstance(changed_leafs, str):
             changed_leafs = [changed_leafs]                                                  #allows the function to accept either one leaf or a list of leaves
@@ -259,15 +251,20 @@ class Agent:
                 self._operation("PATCH", f"/api/v1/interfaces/{interface_name}/state",
                                 {"state": "up" if admin_enabled else "down"}))
 
-        if self._has_change(changed_leafs, "static-address", "address-mode"):
-            addresses = []                                                           #new address list to send to the forwarder
-            if address_mode == "static" and static_address:
-                addresses.append(static_address)
-
-            operations.append(
-                self._operation("PATCH", f"/api/v1/interfaces/{interface_name}/addresses",
-                                {"addresses": addresses}))
-
+        if self._has_change(changed_leafs, "static-address", "static-gateway", "address-mode"):
+            payload = { "address_mode": address_mode}
+    
+            if address_mode == "static":
+                if static_address:
+                    payload["addresses"] = [static_address]
+                if static_gateway:
+                    payload["gateway"] = static_gateway
+            else:
+                payload["addresses"] = []                                              #if dhcp, no address to configure
+                payload["gateway"] = None
+    
+            operations.append( self._operation("PATCH", f"/api/v1/interfaces/{interface_name}/addresses", payload))
+    
         return operations
 
     def _build_lan_link_operations(self, parent_dict, changed_leafs, delete=False):
@@ -275,7 +272,7 @@ class Agent:
         bridge_name = parent_dict.get("bridge-name") or name
         ipv4_prefix = parent_dict.get("ipv4-prefix")
         member_interfaces = self._as_list(parent_dict.get("member-interface"))
-        admin_enabled = self._bool_value(parent_dict.get("admin-enabled"), True)
+        admin_enabled = parent_dict.get("admin-enabled")
 
         if isinstance(changed_leafs, str):
             changed_leafs = [changed_leafs]                                                  #allows the function to accept either one leaf or a list of leaves
@@ -511,7 +508,7 @@ class Agent:
 
         phase = root.findtext("phase")
         transaction_id = root.findtext("transaction-id")
-        validate_only = phase == "validate"                                          #Clixon sends validate first and commit after successful validation
+        validate_only = phase == "validate"                                          #Clixon sends validate first and commit after successful validation. If Clixon sends phase = "validate"→ validate_only = True
 
         if transaction_id == "0":                                                    #transaction 0 is startup data, not a real user config change
             logging.info("Ignoring Clixon startup transaction 0")
@@ -967,6 +964,9 @@ class ClixonCallbackHandler(BaseHTTPRequestHandler):
 
             length = int(self.headers.get("Content-Length", 0))                        #number of bytes in the Clixon callback request body
             body = self.rfile.read(length).decode("utf-8")                             #reads the XML callback body as text
+
+            print("\n===== RAW CLIXON CALLBACK XML =====")                             #JUST TO VERIFY. CAN REMOVE THIS LINE LATER
+            print(body)
 
             result = self.agent.handle_clixon_transaction(body)                         #passes the XML transaction to the main agent logic
 
