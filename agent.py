@@ -988,7 +988,7 @@ class Agent:
         result = {                                                                          #Build final result object
             #"wan_link_states": wan_link_states,        #REMOVE COMMENT IF NEED TO TEST
             #"tunnel_states": tunnel_states,            #REMOVE COMMENT IF NEED TO TEST
-            "decisions": steering_decisions,
+            "decisions": steering_decisions}
 
         logging.info("Agent runtime steering cycle completed")                               #Builds a summary dictionary of everything done in this cycle.
         print(json.dumps(result, indent=2))                                                  #Logs success message.
