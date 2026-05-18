@@ -1154,5 +1154,5 @@ if __name__ == "__main__":
         daemon=True
     )
     steering_thread.start()                                   # Run steering loop in background after RESTCONF is ready
-    agent.run_once()                                         # Run one steering decision cycle manually for testing
+    
     agent.run_clixon_callback_server()                        # Start internal API used by Clixon callback plugin.
