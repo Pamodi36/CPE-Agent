@@ -986,12 +986,11 @@ class Agent:
         steering_decisions = self._make_steering_decisions(current_config, wan_link_states, tunnel_states) #Makes steering decisions using current states and policies
 
         result = {                                                                          #Build final result object
-            "wan_link_states": wan_link_states,
-            "tunnel_states": tunnel_states,
+            #"wan_link_states": wan_link_states,        #REMOVE COMMENT IF NEED TO TEST
+            #"tunnel_states": tunnel_states,            #REMOVE COMMENT IF NEED TO TEST
             "decisions": steering_decisions,
-           
 
-        logging.info("Agent runtime steering cycle completed")                              #Builds a summary dictionary of everything done in this cycle.
+        logging.info("Agent runtime steering cycle completed")                               #Builds a summary dictionary of everything done in this cycle.
         print(json.dumps(result, indent=2))                                                  #Logs success message.
 
         return result
