@@ -989,7 +989,7 @@ class Agent:
             "wan_link_states": wan_link_states,
             "tunnel_states": tunnel_states,
             "decisions": steering_decisions,
-            "note": "No path-group forwarder operation is generated because the current YANG model has no path-group object list"}
+           
 
         logging.info("Agent runtime steering cycle completed")                              #Builds a summary dictionary of everything done in this cycle.
         print(json.dumps(result, indent=2))                                                  #Logs success message.
