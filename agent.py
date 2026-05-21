@@ -314,6 +314,7 @@ class Agent:
     def _build_wan_link_operations(self, parent_dict, changed_leafs, delete=False):
         name = parent_dict.get("name")
         interface_name = parent_dict.get("interface-name")
+        route_set_id = f"{name}-default"
         role = parent_dict.get("role")
         admin_enabled = self._bool_value(parent_dict.get("admin-enabled"))
         address_mode = parent_dict.get("address-mode")
