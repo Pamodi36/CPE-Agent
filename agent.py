@@ -331,7 +331,7 @@ class Agent:
 
         if delete:
             operations.append(self._operation("PUT", f"/api/v1/interfaces/{interface_name}/state", {"state": "down"}))
-            operations.append(self._operation("DELETE", f"/api/v1/routes/static/{name}-default"))
+            operations.append(self._operation("DELETE", f"/api/v1/routes/static/{route_set_id}"))
             return operations
 
         if self._has_change(changed_leafs, "admin-enabled") and admin_enabled is not None:
@@ -347,7 +347,7 @@ class Agent:
 
         if self._has_change(changed_leafs, "static-gateway", "address-mode", "interface-name"):
             if address_mode == "static" and static_gateway:
-                operations.append(self._operation("PUT", f"/api/v1/routes/static/{name}-default", {
+                operations.append(self._operation("PUT", f"/api/v1/routes/static/{route_set_id}", {
                     "routes": [{
                         "destination_cidr": "0.0.0.0/0",
                         "next_hop_ip": static_gateway,
@@ -355,7 +355,7 @@ class Agent:
                     }]
                 }))
             elif address_mode == "dhcp":
-                operations.append(self._operation("DELETE", f"/api/v1/routes/static/{name}-default"))
+                operations.append(self._operation("DELETE", f"/api/v1/routes/static/{route_set_id}"))
 
         return operations
 
