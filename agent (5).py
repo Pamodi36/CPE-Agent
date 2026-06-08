@@ -236,40 +236,71 @@ class Agent:
         return False
 
     def run_steering_loop_after_restconf_ready(self, interval_sec=10):
-        if not self.wait_for_restconf():
-            return
-
+        if not self.wait_for_restconf():                                                # wait until Clixon RESTCONF is ready
+            return                                                                      # stop startup if RESTCONF is not ready
+        self._sync_fwmarks_from_forwarder()                                             # recover existing fwmarks from forwarder after router/agent reboot (only once)
         self.run_forever(interval_sec=interval_sec)
     # =====================================================================================
     # Forwarder API helpers
     # =====================================================================================
     def _operation(self, method, path, payload=None):
-        operation = {"method": method, "path": path}                                   # basic forwarder operation structure
+        operation = {"method": method, "path": path}                                     # basic forwarder operation structure
         if payload is not None:
             operation["payload"] = payload                                               # payload is added only when the operation needs data
         return operation
 
     def _store_forwarder_fwmark(self, traffic_class, fwmark):
-        if not traffic_class or fwmark is None:                                       # do nothing if required values are missing
+        if not traffic_class or fwmark is None:                                          # do nothing if required values are missing
             return
     
-        self.flow_fwmarks[traffic_class] = int(fwmark)                                # store fwmark learned from forwarder for monitoring use
+        self.flow_id_fwmarks[traffic_class] = int(fwmark)                                # store fwmark learned from forwarder for monitoring use
         logging.info("Learned fwmark=%s for traffic_class=%s from forwarder", fwmark, traffic_class) # log learned fwmark
 
 
     def _process_forwarder_transaction_result(self, result):
-        if not isinstance(result, dict):                                               # ignore unexpected response format
+        if not isinstance(result, dict):                                                  # ignore unexpected response format
             return
     
-        for operation_result in result.get("results", []):                             # loop through each operation result returned by forwarder
+        for operation_result in result.get("results", []):                                # loop through each operation result returned by forwarder
             path = operation_result.get("path", "")                                    
             fwmark = operation_result.get("fwmark")                                    
     
-            if not path.startswith("/api/v1/flow-policies/traffic-class-"):            # only flow-policy responses are expected to contain fwmark
+            if not path.startswith("/api/v1/flow-policies/traffic-class-"):               # only flow-policy responses are expected to contain fwmark
                 continue
+     
+            traffic_class = path.rsplit("traffic-class-", 1)[-1]                          # extract traffic class name from flow policy path
+            self._store_forwarder_fwmark(traffic_class, fwmark)                           # store returned fwmark in runtime cache
+
+    def _sync_fwmarks_from_forwarder(self):
+        if self.forwarder_dry_run:                                                        # skip GET requests when forwarder API calls are disabled
+            logging.info("Dry-run: skipping fwmark sync from forwarder")                  # log why startup fwmark sync is skipped
+            return                                                                        # stop here in dry-run mode
     
-            traffic_class = path.rsplit("traffic-class-", 1)[-1]                       # extract traffic class name from flow policy path
-            self._store_forwarder_fwmark(traffic_class, fwmark)                        # store returned fwmark in runtime cache
+        try:                                                                              # try to recover fwmarks from forwarder after reboot/restart
+            current_config = self.config_reader.get_intended_config()                     # read current intended config from Clixon datastore
+            classes = self._as_list(current_config.get("traffic", {}).get("class", []))   # read configured traffic classes from YANG datastore
+    
+            for traffic_class_obj in classes:                                             # loop through each configured traffic class
+                class_name = traffic_class_obj.get("name")                                # read traffic class name from datastore
+    
+                if not class_name:                                                        # skip invalid traffic class entry
+                    continue                                                              # continue with next class
+    
+                policy_id = f"traffic-class-{class_name}"                                 # build forwarder flow-policy ID from traffic class name
+                url = f"{self.forwarder_base_url}/api/v1/flow-policies/{policy_id}"       # request stored fwmark for this flow-policy from forwarder
+    
+                response = requests.get(url, headers={"Accept": "application/json"}, timeout=10) # send GET request to forwarder
+                response.raise_for_status()                                               # raise exception if forwarder returns 4xx or 5xx
+    
+                data = response.json()                                                    # parse JSON response from forwarder
+                fwmark = data.get("fwmark")                                               # read fwmark assigned and stored by forwarder
+    
+                self._store_forwarder_fwmark(class_name, fwmark)                          # store fwmark in agent runtime cache for monitoring
+    
+            logging.info("Synced fwmarks from forwarder: %s", self.flow_id_fwmarks)       # log final fwmark cache after startup sync
+    
+        except Exception as e:                                                            # catch connection, timeout, JSON, or response errors
+            logging.exception("Failed to sync fwmarks from forwarder: %s", e)             
             
     def _send_forwarder_transaction(self, operations, validate_only):
         payload = {
