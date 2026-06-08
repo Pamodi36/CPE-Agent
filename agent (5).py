@@ -28,15 +28,13 @@ class Agent:
         #self.monitoring_manager = MonitoringManager()    #REMOVE COMMENT
 
         self.generated_tunnel_keys = {}                                               # stores generated WireGuard keys during the current agent runtime
-        self.forwarder_base_url = "http://vcpe-forwarder:9090"                       # fixed forwarder API URL used by the agent
+        self.flow_id_fwmarks = {}                                                     # stores generated fwmark to use for monitoring flow id
+        self.forwarder_base_url = "http://vcpe-forwarder:9090"                        # fixed forwarder API URL used by the agent
         self.forwarder_dry_run = False                                                # Since forwarder is not ready yet,a dry-run will be enabled by default (false send real API calls)
 
     # =====================================================================================
     # Basic helpers
     # =====================================================================================
-    def _allocate_fwmark(self, class_name, index):                                    # called by "_make_steering_decisions()". CPE agent assigned fwmark for a traffic class.
-        return 1000 + index
-
     def _index_states_by_name(self, states):                                          # called by "_make_steering_decisions()"
         indexed = {}
         for item in states:                                                           # Loops through each state item in the list
@@ -251,6 +249,28 @@ class Agent:
             operation["payload"] = payload                                               # payload is added only when the operation needs data
         return operation
 
+    def _store_forwarder_fwmark(self, traffic_class, fwmark):
+        if not traffic_class or fwmark is None:                                       # do nothing if required values are missing
+            return
+    
+        self.flow_fwmarks[traffic_class] = int(fwmark)                                # store fwmark learned from forwarder for monitoring use
+        logging.info("Learned fwmark=%s for traffic_class=%s from forwarder", fwmark, traffic_class) # log learned fwmark
+
+
+    def _process_forwarder_transaction_result(self, result):
+        if not isinstance(result, dict):                                               # ignore unexpected response format
+            return
+    
+        for operation_result in result.get("results", []):                             # loop through each operation result returned by forwarder
+            path = operation_result.get("path", "")                                    
+            fwmark = operation_result.get("fwmark")                                    
+    
+            if not path.startswith("/api/v1/flow-policies/traffic-class-"):            # only flow-policy responses are expected to contain fwmark
+                continue
+    
+            traffic_class = path.rsplit("traffic-class-", 1)[-1]                       # extract traffic class name from flow policy path
+            self._store_forwarder_fwmark(traffic_class, fwmark)                        # store returned fwmark in runtime cache
+            
     def _send_forwarder_transaction(self, operations, validate_only):
         payload = {
             "validate_only": validate_only,                                              # "True" during Clixon validate phase, "False" during commit phase. Detection happens in happens in handle_clixon_transaction()
@@ -266,13 +286,17 @@ class Agent:
                 "payload": payload}
 
         url = f"{self.forwarder_base_url}/api/v1/transactions"
-        response = requests.post(url, json=payload, timeout=10)                           #send the transaction to the forwarder API
+        response = requests.post(url, json=payload, timeout=10)                            #send the transaction to the forwarder API
         response.raise_for_status()
 
-        if response.text:
-            return response.json()
-
-        return {"status": "ok"}
+        logging.info("Forwarder response body: %s", response.text)                         # log actual response body for debugging
+        
+        if response.text:                                                                  # if forwarder returned JSON response body
+            result = response.json()                                                       # parse response JSON
+            self._process_forwarder_transaction_result(result)                             # extract fwmark values returned by forwarder
+            return result                                                                  # return forwarder response to caller
+        
+        return {"status": "ok"}                                                            # return simple OK if response body is empty
 
     # =====================================================================================
     # Build forwarder operations (for Clixon YANG Datastore config-diff triggered operations)
