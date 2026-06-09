@@ -19,40 +19,50 @@ class MonitoringManager:
             return None                                                                  
         return str(prefix).split("/", 1)[0]                                                # convert 192.168.10.2/24 into 192.168.10.2
 
-    def _calculate_interval_from_slo(self, slo):                                           # calculate probe interval using YANG SLO values
-        if not isinstance(slo, dict):                                                      # if SLO object is missing or invalid
-            return 600                                                                     # use default slow probing interval(10min)
+    def _calculate_interval_from_slo(self, slo):                                        
+        if not isinstance(slo, dict):                                                      # if SLO object is missing or invalid use default interval for best-effort traffic
+            return 600                                                         
 
-        max_latency = slo.get("max-latency-ms")                                            # read max latency threshold from YANG datastore
-        max_jitter = slo.get("max-jitter-ms")                                              # read max jitter threshold from YANG datastore
-        max_loss = slo.get("max-loss-percent")                                             # read max packet loss threshold from YANG datastore
-        min_bandwidth = slo.get("min-bandwidth-kbps")                                      # read minimum bandwidth threshold from YANG datastore
+        max_latency = slo.get("max-latency-ms")                                          
+        max_jitter = slo.get("max-jitter-ms")                                            
+        max_loss = slo.get("max-loss-percent")                                             
+        min_bandwidth = slo.get("min-bandwidth-kbps")                                      
 
-        try:                                                                               # convert numeric YANG values safely
-            max_latency = float(max_latency) if max_latency is not None else None        
-            max_jitter = float(max_jitter) if max_jitter is not None else None           
-            max_loss = float(max_loss) if max_loss is not None else None                 
-            min_bandwidth = float(min_bandwidth) if min_bandwidth is not None else None  
-        except ValueError:                                                                 # if conversion fails use default interval
-            return 30                                                                   
+        candidate_intervals = []                                                          # stores suggested intervals from each configured SLO metric
 
-        if max_latency is not None and max_latency <= 30:                                  # strict latency SLO means frequent probing
-            return 2                                                                       # probe every 2 seconds
+        if max_latency is not None:                                                      
+            if max_latency <= 30:                                                       
+                candidate_intervals.append(2)                                             # strict latency requirement suggest 2 seconds
+            elif max_latency <= 100:                                                     
+                candidate_intervals.append(5)                                             # moderate latency requirement suggest 5 seconds
+            else:                                                                         
+                candidate_intervals.append(10)                                            # relaxed latency requirement suggest 10 seconds
 
-        if max_jitter is not None and max_jitter <= 10:                                    # strict jitter SLO also means frequent probing
-            return 2                                                                       # probe every 2 seconds
+        if max_jitter is not None:                                                   
+            if max_jitter <= 10:                                                         
+                candidate_intervals.append(2)                                          
+            elif max_jitter <= 30:                                                       
+                candidate_intervals.append(5)                                           
+            else:                                                                      
+                candidate_intervals.append(10)                                           
 
-        if max_loss is not None and max_loss <= 1:                                         # strict loss SLO needs moderately frequent probing
-            return 5                                                                       # probe every 5 seconds
+        if max_loss is not None:                                                       
+            if max_loss <= 1:                                                            
+                candidate_intervals.append(5)                                           
+            else:                                                                        
+                candidate_intervals.append(10)                                         
 
-        if min_bandwidth is not None:                                                      # bandwidth-aware traffic needs periodic bandwidth check
-            return 10                                                                      # probe every 10 seconds for bandwidth-sensitive classes
+        if min_bandwidth is not None:                                                 
+            candidate_intervals.append(10)                                               
 
-        return 30                                                                          # default probing interval for best-effort traffic
+        if not candidate_intervals:                                                    
+            return 600                                                                    # if no SLO metric is configured, use default best-effort interval
+
+        return min(candidate_intervals)                                                   # choose the smallest interval as common interval
 
     def _select_probe_tools(self, slo):                                                   
-        if not isinstance(slo, dict):                                                      # if no SLO is provided
-            return ["ping"]                                                                # use ping as default reachability/RTT probe
+        if not isinstance(slo, dict):                                                      # if no SLO is provided use ping as default reachability/RTT probe
+            return ["ping"]                                                                
 
         tools = set()                                                                      # use a set to avoid duplicate tools
 
@@ -78,34 +88,37 @@ class MonitoringManager:
         if not destination_ip or destination_ip == "any":                                  # active probe needs a specific destination
             raise ValueError("Cannot start flow monitoring without a specific dst-prefix") # fail clearly when destination is not usable
 
-        slo = traffic_class.get("slo") or {}                    #############################CHECKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK
+        slo = traffic_class.get("slo")
 
-        payload = {                                                                      # payload sent to vcpe-monitoring
-            "flow_id": str(flow_id),                                                     # underlay flow ID; this is fwmark received from forwarder via agent.py
-            "destination_ip": destination_ip,                                            # target IP where probe packets are sent
-            "probe_tools": self._select_probe_tools(slo),                                # selected tools based on SLO metrics
-            "interval_sec": self._calculate_interval_from_slo(slo)                       # selected probe frequency based on SLO strictness
+        if slo is None:
+            slo = {}
+
+        payload = {                                                                       # payload sent to vcpe-monitoring
+            "flow_id": str(flow_id),                                                      # underlay flow ID; this is fwmark received from forwarder via agent.py
+            "destination_ip": destination_ip,                                             # target IP where probe packets are sent
+            "probe_tools": self._select_probe_tools(slo),                                 # selected tools based on SLO metrics
+            "interval_sec": self._calculate_interval_from_slo(slo)                        # selected probe frequency based on SLO strictness
         }
 
-        url = f"{self.monitoring_base_url}/monitoring/flows"                             # vcpe-monitoring endpoint for flow monitoring
+        url = f"{self.monitoring_base_url}/monitoring/flows"                              # vcpe-monitoring endpoint for flow monitoring
         logging.info("Sending flow monitoring request: %s", payload)                     
 
-        response = requests.post(url, json=payload, timeout=5)                           # send POST request to vcpe-monitoring
+        response = requests.post(url, json=payload, timeout=5)                            # send POST request to vcpe-monitoring
         response.raise_for_status()                                                      
 
-        return payload                                                                   # return sent payload for agent logging/debugging
+        return payload                                                                    # return sent payload for agent logging/debugging
 
     def stop_underlay_flow_monitoring(self, flow_id):                                    
-        url = f"{self.monitoring_base_url}/monitoring/flows/{flow_id}"                   # vcpe-monitoring endpoint for deleting flow monitor
+        url = f"{self.monitoring_base_url}/monitoring/flows/{flow_id}"                    # vcpe-monitoring endpoint for deleting flow monitor
         logging.info("Stopping flow monitoring for flow_id=%s", flow_id)                 
 
-        response = requests.delete(url, timeout=5)                                       # send DELETE request to vcpe-monitoring
+        response = requests.delete(url, timeout=5)                                        # send DELETE request to vcpe-monitoring
         response.raise_for_status()                                                   
 
     def start_overlay_tunnel_monitoring(self, tunnel):                                   
         tunnel_id = tunnel.get("name")                                                 
         resolved_peer = tunnel.get("resolved-peer", {})                                
-        destination_ip = resolved_peer.get("peer-address")                               # use peer-address as tunnel monitoring destination
+        destination_ip = resolved_peer.get("peer-address")                                # use peer-address as tunnel monitoring destination
 
         if not tunnel_id:                                                              
             raise ValueError("Cannot start tunnel monitoring without tunnel name")       
@@ -123,13 +136,13 @@ class MonitoringManager:
         url = f"{self.monitoring_base_url}/monitoring/tunnels"                           # vcpe-monitoring endpoint for tunnel monitoring
         logging.info("Sending tunnel monitoring request: %s", payload)                   
 
-        response = requests.post(url, json=payload, timeout=5)                            # send POST request to vcpe-monitoring
+        response = requests.post(url, json=payload, timeout=5)                           # send POST request to vcpe-monitoring
         response.raise_for_status()                                                      
 
         return payload                                                                  
 
     def stop_overlay_tunnel_monitoring(self, tunnel_id):                                  
-        url = f"{self.monitoring_base_url}/monitoring/tunnels/{tunnel_id}"                # vcpe-monitoring endpoint for deleting tunnel monitor
+        url = f"{self.monitoring_base_url}/monitoring/tunnels/{tunnel_id}"               # vcpe-monitoring endpoint for deleting tunnel monitor
         logging.info("Stopping tunnel monitoring for tunnel_id=%s", tunnel_id)           
 
         response = requests.delete(url, timeout=5)                                       # send DELETE request to vcpe-monitoring
