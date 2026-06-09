@@ -7,21 +7,21 @@ class MonitoringManager:
     def __init__(self, monitoring_base_url="http://vcpe-monitoring:8090/api/v1"):      
         self.monitoring_base_url = monitoring_base_url
 
-    def _as_list(self, value):                                                          # helper to normalize a value into a list
+    def _as_list(self, value):                                                            # helper to normalize a value into a list
         if value is None:                                                              
             return []                                                                  
         if isinstance(value, list):                                                    
-            return value                                                                # if the value is already a list return it as it is
-        return [value]                                                                  # otherwise wrap a single value as a list
+            return value                                                                  # if the value is already a list return it as it is
+        return [value]                                                                    # otherwise wrap a single value as a list
 
-    def _ip_from_prefix(self, prefix):                                                   # helper to extract IP from prefix
-        if not prefix:                                                                   # if prefix is missing, no destination IP can be extracted
+    def _ip_from_prefix(self, prefix):                                                     # helper to extract IP from prefix
+        if not prefix:                                                                     # if prefix is missing, no destination IP can be extracted
             return None                                                                  
-        return str(prefix).split("/", 1)[0]                                              # convert 192.168.10.2/24 into 192.168.10.2
+        return str(prefix).split("/", 1)[0]                                                # convert 192.168.10.2/24 into 192.168.10.2
 
-    def _calculate_interval_from_slo(self, slo):                                         # calculate probe interval using YANG SLO values
-        if not isinstance(slo, dict):                                                    # if SLO object is missing or invalid
-            return 600                                                                   # use default slow probing interval(10min)
+    def _calculate_interval_from_slo(self, slo):                                           # calculate probe interval using YANG SLO values
+        if not isinstance(slo, dict):                                                      # if SLO object is missing or invalid
+            return 600                                                                     # use default slow probing interval(10min)
 
         max_latency = slo.get("max-latency-ms")                                            # read max latency threshold from YANG datastore
         max_jitter = slo.get("max-jitter-ms")                                              # read max jitter threshold from YANG datastore
