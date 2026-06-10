@@ -192,13 +192,21 @@ class Agent:
                 for _ in range(5):                                                       # small polling loop for the asynchronous NAT discovery task
                     result = requests.get(result_url, headers={"Accept": "application/json"}, timeout=10)
                     result.raise_for_status()
-                    data = result.json()
-                    if data.get("status") == "completed":
-                        nat_type = data.get("results", {}).get("nat_type")              # reads nat_type value returned by the forwarder
-                        break
-                    if data.get("status") == "failed":
-                        return None
-                    time.sleep(1)
+                    data = result.json()                                                 # parse response body                 
+                
+                    status = data.get("status")                                         
+                
+                    if status == "completed":                                            
+                        nat_type = data.get("results", {}).get("nat_type")             
+                        break                                                            # stop polling
+                
+                    if status == "failed":                                              
+                        logging.warning("NAT discovery failed for wan-link=%s", wan_name) 
+                        return None                                                      # stop NAT discovery
+                
+                    if status == "running":                                              # NAT discovery is still not finished
+                        time.sleep(1)                                                    # wait before next polling attempt
+                        continue                                                         # poll again
 
                 if not nat_type:
                     return None
