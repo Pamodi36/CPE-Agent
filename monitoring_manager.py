@@ -4,9 +4,10 @@ import logging
 import requests                                                                        
 
 class MonitoringManager:                                                               
-    def __init__(self, monitoring_base_url="http://vcpe-monitoring:8090/api/v1"):      
-        self.monitoring_base_url = monitoring_base_url
-
+    def __init__(self):      
+        self.monitoring_base_url = "http://vcpe-monitoring:8090/api/v1"
+        self.dry_run = dry_run                                                          
+        
     def _as_list(self, value):                                                            # helper to normalize a value into a list
         if value is None:                                                              
             return []                                                                  
@@ -73,7 +74,7 @@ class MonitoringManager:
             tools.add("ping")                                                        
 
         if slo.get("max-jitter-ms") is not None:                                           # if jitter is part of the SLO -> iperf3 and Twamp
-            tools.add("iperf3", "twamp")                                                          
+            tools.add(["iperf3", "twamp"])                                                         
 
         if slo.get("min-bandwidth-kbps") is not None:                                      # if bandwidth is part of the SLO -> iperf3
             tools.add("iperf3")                                                        
@@ -101,6 +102,13 @@ class MonitoringManager:
         }
 
         url = f"{self.monitoring_base_url}/monitoring/flows"                              # vcpe-monitoring endpoint for flow monitoring
+
+        if self.dry_run:                                                                 # dry_run if monitoring module is not available
+            print("\n===== DRY-RUN MONITORING FLOW START =====")                         
+            print("POST", url)                                                          
+            print(payload)                                                               # payload that would be sent
+            return payload                                                               
+
         logging.info("Sending flow monitoring request: %s", payload)                     
 
         response = requests.post(url, json=payload, timeout=5)                            # send POST request to vcpe-monitoring
@@ -110,6 +118,12 @@ class MonitoringManager:
 
     def stop_underlay_flow_monitoring(self, flow_id):                                    
         url = f"{self.monitoring_base_url}/monitoring/flows/{flow_id}"                    # vcpe-monitoring endpoint for deleting flow monitor
+
+        if self.dry_run:                                                                 # dry_run if monitoring module is not available
+            print("\n===== DRY-RUN MONITORING FLOW STOP =====")                          
+            print("DELETE", url)                                                         
+            return     
+                    
         logging.info("Stopping flow monitoring for flow_id=%s", flow_id)                 
 
         response = requests.delete(url, timeout=5)                                        # send DELETE request to vcpe-monitoring
@@ -134,6 +148,13 @@ class MonitoringManager:
         }
 
         url = f"{self.monitoring_base_url}/monitoring/tunnels"                           # vcpe-monitoring endpoint for tunnel monitoring
+        
+        if self.dry_run:                                                                 # dry_run if monitoring module is not available
+            print("\n===== DRY-RUN MONITORING FLOW START =====")                         
+            print("POST", url)                                                          
+            print(payload)                                                               # payload that would be sent
+            return payload       
+            
         logging.info("Sending tunnel monitoring request: %s", payload)                   
 
         response = requests.post(url, json=payload, timeout=5)                           # send POST request to vcpe-monitoring
@@ -143,6 +164,12 @@ class MonitoringManager:
 
     def stop_overlay_tunnel_monitoring(self, tunnel_id):                                  
         url = f"{self.monitoring_base_url}/monitoring/tunnels/{tunnel_id}"               # vcpe-monitoring endpoint for deleting tunnel monitor
+
+        if self.dry_run:                                                                 # dry_run if monitoring module is not available
+            print("\n===== DRY-RUN MONITORING FLOW STOP =====")                        
+            print("DELETE", url)                                                         
+            return     
+                    
         logging.info("Stopping tunnel monitoring for tunnel_id=%s", tunnel_id)           
 
         response = requests.delete(url, timeout=5)                                       # send DELETE request to vcpe-monitoring
