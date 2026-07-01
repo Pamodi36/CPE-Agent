@@ -81,7 +81,7 @@ class MonitoringManager:
 
         return sorted(list(tools))                                                         # return stable list such as ["iperf3", "ping"]
 
-    def start_underlay_flow_monitoring(self, traffic_class, flow_id):                    
+    def start_underlay_flow_monitoring(self, traffic_class, steering_policy, flow_id):                    
         five_tuple = traffic_class.get("five-tuple", {})                               
         dst_prefix = five_tuple.get("dst-prefix")                                      
         destination_ip = self._ip_from_prefix(dst_prefix)                              
@@ -89,7 +89,7 @@ class MonitoringManager:
         if not destination_ip or destination_ip == "any":                                  # active probe needs a specific destination
             raise ValueError("Cannot start flow monitoring without a specific dst-prefix") # fail clearly when destination is not usable
 
-        slo = traffic_class.get("slo")
+        slo = steering_policy                                                                       # SLO thresholds are under policy > steering
 
         if slo is None:
             slo = {}
