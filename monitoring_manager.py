@@ -4,7 +4,7 @@ import logging
 import requests                                                                        
 
 class MonitoringManager:                                                               
-    def __init__(self):      
+    def __init__(self,dry_run=True):      
         self.monitoring_base_url = "http://vcpe-monitoring:8090/api/v1"
         self.dry_run = dry_run                                                          
         
@@ -74,7 +74,7 @@ class MonitoringManager:
             tools.add("ping")                                                        
 
         if slo.get("max-jitter-ms") is not None:                                           # if jitter is part of the SLO -> iperf3 and Twamp
-            tools.add(["iperf3", "twamp"])                                                         
+            tools.update(["iperf3", "twamp"])                                                         
 
         if slo.get("min-bandwidth-kbps") is not None:                                      # if bandwidth is part of the SLO -> iperf3
             tools.add("iperf3")                                                        
@@ -150,7 +150,7 @@ class MonitoringManager:
         url = f"{self.monitoring_base_url}/monitoring/tunnels"                           # vcpe-monitoring endpoint for tunnel monitoring
         
         if self.dry_run:                                                                 # dry_run if monitoring module is not available
-            print("\n===== DRY-RUN MONITORING FLOW START =====")                         
+            print("\n===== DRY-RUN MONITORING TUNNEL START =====")                         
             print("POST", url)                                                          
             print(payload)                                                               # payload that would be sent
             return payload       
@@ -166,7 +166,7 @@ class MonitoringManager:
         url = f"{self.monitoring_base_url}/monitoring/tunnels/{tunnel_id}"               # vcpe-monitoring endpoint for deleting tunnel monitor
 
         if self.dry_run:                                                                 # dry_run if monitoring module is not available
-            print("\n===== DRY-RUN MONITORING FLOW STOP =====")                        
+            print("\n===== DRY-RUN MONITORING TUNNEL STOP =====")                        
             print("DELETE", url)                                                         
             return     
                     
